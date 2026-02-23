@@ -34,11 +34,16 @@ rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
     std::shared_ptr<const Elevator::Goal> goal)
 {
     RCLCPP_INFO(this->get_logger(), "Passenger at Floor %d, pressing %s", 
-                goal->initial_floor, goal->direction == Elevator::Goal::DIRECTION_UP ? "🔼 UP" : "🔽 DOWN");
+                goal->initial_floor, goal->direction_to_go == Elevator::Goal::DIRECTION_UP ? "🔼 UP" : "🔽 DOWN");
 
     // 验证楼层是否合法 (1-10)
-    if (goal->initial_floor < 1 || goal->initial_floor > 10 ||
-        goal->target_floor < 1 || goal->target_floor > 10) {
+    if (goal->initial_floor < 1 || 
+        goal->initial_floor > 10 ||
+        goal->target_floor < 1 || 
+        goal->target_floor > 10 || 
+        (!((!goal->direction_to_go) && (goal->target_floor > goal->initial_floor)) ||
+        ((goal->direction_to_go) && (goal->target_floor < goal->initial_floor)))
+    ) {
         RCLCPP_WARN(this->get_logger(), "Invalid request!");
         return rclcpp_action::GoalResponse::REJECT;  // 拒绝
     }
