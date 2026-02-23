@@ -1,0 +1,16 @@
+# Goal - 乘客请求电梯的参数
+int32 initial_floor  # 起始楼层
+int32 target_floor   # 目标楼层
+uint32 direction_to_go # 电梯运行方向(0=UP, 1=DOWN)
+uint32 passenger_count # 乘客人数
+---
+# Result  - 任务完成后的结果
+bool success         # 是否成功完成
+int32 final_floor    # 最终所在楼层
+string message       # 完成信息
+---
+# Feedback  - 执行过程中的反馈信息
+int32 current_floor  # 当前楼层
+uint32 status        # 当前状态(MOVING UP/MOVING DOWN/ARRIVED/PICKUP DOWN/DROPOFF DONE)
+uint32 direction     # 电梯运行方向(0=UP, 1=DOWN)
+uint32 current_load  # 当前人数
