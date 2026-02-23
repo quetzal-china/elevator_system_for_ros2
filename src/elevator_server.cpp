@@ -27,7 +27,33 @@ private:
 
 };
 
+// 实现handle_goal函数 - 验证并接受请求
+// ElevatorActionServer类的handle_goal函数，返回一个GoalResponse类型的结果
+rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
+    const rclcpp_action::GoalUUID &uuid,
+    std::shared_ptr<const Elevator::Goal> goal)
+{
+    RCLCPP_INFO(this->get_logger(), "Passenger at Floor %d, pressing %s", 
+                goal->initial_floor, goal->direction == Elevator::Goal::DIRECTION_UP ? "🔼 UP" : "🔽 DOWN");
 
+    // 验证楼层是否合法 (1-10)
+    if (goal->initial_floor < 1 || goal->initial_floor > 10 ||
+        goal->target_floor < 1 || goal->target_floor > 10) {
+        RCLCPP_WARN(this->get_logger(), "Invalid request!");
+        return rclcpp_action::GoalResponse::REJECT;  // 拒绝
+    }
+
+    // 验证起始楼层和目标楼层不同
+    if (goal->initial_floor == goal->target_floor) {
+        RCLCPP_WARN(this->get_logger(), "Invalid request!");
+        return rclcpp_action::GoalResponse::REJECT;  // 拒绝
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Goal accepted by server...");
+
+    // 验证通过，接受请求
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+}
 
 // 构造函数实现
 ElevatorActionServer() : Node("elevator_action_server")
