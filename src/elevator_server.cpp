@@ -75,6 +75,25 @@ rclcpp_action::CancelResponse ElevatorActionServer::handle_cancel(
     return rclcpp_action::CancelResponse::ACCEPT;
 }
 
+// 使用包装函数(因为本人觉得包装函数的方法比lambda表达式和std::bind()函数更清晰)
+static void execute_wrapper(
+        ElevatorActionServer* instance, 
+        std::shared_ptr<GoalHandleElevator> handle)
+    {
+        instance->execute(handle);
+    }
+
+// 实现handle_accepted函数 - 启动新线程执行任务
+void ElevatorActionServer::handle_accepted(
+    const std::shared_ptr<GoalHandleElevator> goal_handle
+)
+{
+    std::thread(execute_wrapper, this, goal_handle).detach();
+}
+
+ // 执行任务的函数 处理核心逻辑
+void execute(const std::shared_ptr<GoalHandleElevator> goal_handle);
+
 // 构造函数实现
 ElevatorActionServer() : Node("elevator_action_server")
 {
@@ -90,4 +109,63 @@ ElevatorActionServer() : Node("elevator_action_server")
         std::bind(&ElevatorActionServer::handle_cancel, this, std::placeholders::_1),
         std::bind(&ElevatorActionServer::handle_accepted, this, std::placeholders::_1));
     RCLCPP_INFO(this->get_logger(), "电梯Action服务器已启动");
+}
+
+// execute函数实现
+void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
+{
+    RCLCPP_INFO(this->get_logger(), "Executing goal";
+
+    // 获取目标信息
+    auto goal = goal_handle->get_goal();
+    auto feedback = std::make_shared<Elevator::Feedback>();
+    auto result = std::make_shared<Elevator::Result>();
+
+    uint32_t  initial_floor = goal->initial_floor;
+    uint32_t  target_floor = goal->target_floor;
+    uint32_t  direction_to_go = goal->direction_to_go;
+    feedback->direction = goal->direction_to_go;
+
+    // 步骤1: 移动到乘客所在楼层
+    RCLCPP_INFO(this->get_logger(), "正在前往 %d 楼接乘客...", initial_floor);
+    status_ = (initial_floor > current_floor_) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN;
+
+    while (current_floor_ != initial_floor && rclcpp::ok())
+    {
+        // 检查是否收到了取消请求
+        if (goal_handle->is_cancel_requested())
+        {
+            result->success = false;
+            result->current_floor = current_floor_;
+            result->passenger_count = passenger_count_;
+            result->final_floor = current_floor_;
+            goal_handle->set_canceled(result);
+            RCLCPP_INFO(this->get_logger(), "Goal canceled");
+            return;
+        }
+
+        // 否则正常执行移动
+        if (initial_floor > current_floor_)
+        {
+            current_floor_++;
+        }
+        else
+        {
+            current_floor_--;
+        }
+
+        // 发布反馈
+        feedback->current_floor = current_floor_;
+        feedback->status = (current_floor_ < initial_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN;
+        feedback->current_load = passenger_count_;
+        goal_handle->publish_feedback(feedback);
+        RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (pickup) | Passengers: %d | Dir: %s",
+                    current_floor_,
+                    (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN",
+                    initial_floor,
+                    feedback->current_load,
+                    (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+        // 等待
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
 }

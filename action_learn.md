@@ -280,10 +280,15 @@ thread_object.join();
 // 使用lamdba表达式
 void handle_accepted(const std::shared_ptr<GoalHandleType> goal_handle)
 {
-    // 使用lambda或bind启动新线程执行任务
+    // 使用lambda启动新线程执行任务
     std::thread{[this, goal_handle]() {
         this->execute(goal_handle);
     }}.detach();
+}
+// 使用std::bind()函数
+void handle_accepted(const std::shared_ptr<GoalHandleType> goal_handle)
+{
+    std::thread(std::bind(&ActionServerClass::execute, this, goal_handle)).detach();
 }
 // 使用包装函数
 void handle_accepted(const std::shared_ptr<GoalHandleType> goal_handle)
