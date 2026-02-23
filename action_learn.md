@@ -277,7 +277,7 @@ thread_object.join();
 ### 4.4 在Action服务器中的使用
 
 ```cpp
-// 使用lamdba
+// 使用lamdba表达式
 void handle_accepted(const std::shared_ptr<GoalHandleType> goal_handle)
 {
     // 使用lambda或bind启动新线程执行任务
