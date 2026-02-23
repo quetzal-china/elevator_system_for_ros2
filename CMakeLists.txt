@@ -20,6 +20,13 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 
+# 添加install目录到include路径
+include_directories(
+  include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${ament_index_cmake_DIR}/../../include
+)
+
 find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Elevator.action"
