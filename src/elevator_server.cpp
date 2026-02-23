@@ -5,6 +5,9 @@
 #include "elevator_system/action/elevator.hpp"  // 自定义Action接口
 #include "elevator_system/elevator_status.hpp"  // 电梯状态枚举
 
+#define GROUND_FLOOR 1
+#define TOP_FLOOR 10
+
 class ElevatorActionServer : public rclcpp::Node    // 继承自ROS2节点
 {
 public:
@@ -34,15 +37,17 @@ rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
     std::shared_ptr<const Elevator::Goal> goal)
 {
     RCLCPP_INFO(this->get_logger(), "Passenger at Floor %d, pressing %s", 
-                goal->initial_floor, goal->direction_to_go == Elevator::Goal::DIRECTION_UP ? "🔼 UP" : "🔽 DOWN");
+                goal->initial_floor, goal->direction_to_go == 0 ? "🔼 UP" : "🔽 DOWN");
+
+    // 保证方向合理
+    bool is_direction_valid = (goal->target_floor > goal->initial_floor) == (goal->direction_to_go == 0);
 
     // 验证楼层是否合法 (1-10)
-    if (goal->initial_floor < 1 || 
-        goal->initial_floor > 10 ||
-        goal->target_floor < 1 || 
-        goal->target_floor > 10 || 
-        (!((!goal->direction_to_go) && (goal->target_floor > goal->initial_floor)) ||
-        ((goal->direction_to_go) && (goal->target_floor < goal->initial_floor)))
+    if (goal->initial_floor < GROUND_FLOOR || 
+        goal->initial_floor > TOP_FLOOR ||
+        goal->target_floor < GROUND_FLOOR || 
+        goal->target_floor > TOP_FLOOR || 
+        !is_direction_valid
     ) {
         RCLCPP_WARN(this->get_logger(), "Invalid request!");
         return rclcpp_action::GoalResponse::REJECT;  // 拒绝
@@ -60,11 +65,21 @@ rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
+// 实现handle_cancel函数 - 处理取消请求
+// ElevatorActionServer类的成员函数handle_cancel，返回CancelResponse类型"
+rclcpp_action::CancelResponse ElevatorActionServer::handle_cancel(
+    const std::shared_ptr<GoalHandleElevator> goal_handle
+)
+{
+    RCLCPP_INFO(this->get_logger(), "Cancel request received for goal %d", goal_handle->get_goal_id().id);
+    return rclcpp_action::CancelResponse::ACCEPT;
+}
+
 // 构造函数实现
 ElevatorActionServer() : Node("elevator_action_server")
 {
     // 初始化电梯状态
-    current_floor_ = 1;  // 电梯初始在1楼
+    current_floor_ = GROUND_FLOOR;  // 电梯初始在1楼
     passenger_count_ = 0;  // 初始没有乘客
     status_ = ElevatorStatus::STATUS_IDLE;  // 空闲状态
     // 创建Action服务器
