@@ -27,6 +27,8 @@ private:
     ElevatorStatus status_;      // 电梯状态
     int passenger_count_;        // 乘客数量
 
+    // 执行任务的函数 处理核心逻辑
+    void execute(const std::shared_ptr<GoalHandleElevator> goal_handle);
 
 };
 
@@ -91,11 +93,9 @@ void ElevatorActionServer::handle_accepted(
     std::thread(execute_wrapper, this, goal_handle).detach();
 }
 
- // 执行任务的函数 处理核心逻辑
-void execute(const std::shared_ptr<GoalHandleElevator> goal_handle);
 
 // 构造函数实现
-ElevatorActionServer() : Node("elevator_action_server")
+ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server")
 {
     // 初始化电梯状态
     current_floor_ = GROUND_FLOOR;  // 电梯初始在1楼
@@ -112,7 +112,7 @@ ElevatorActionServer() : Node("elevator_action_server")
 }
 
 // execute函数实现
-void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
+void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
 {
     RCLCPP_INFO(this->get_logger(), "Executing goal...");
 
@@ -138,10 +138,8 @@ void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
         if (goal_handle->is_cancel_requested())
         {
             result->success = false;
-            result->current_floor = current_floor_;
-            result->passenger_count = passenger_count_;
             result->final_floor = current_floor_;
-            goal_handle->set_canceled(result);
+            goal_handle->canceled(result);
             RCLCPP_INFO(this->get_logger(), "Goal canceled");
             return;
         }
@@ -185,7 +183,7 @@ void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
                 current_floor_,
                 feedback->current_load,
                 (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
-    std::this_thread::sleep_for(std::chrono::second(1));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     feedback->status = ElevatorStatus::STATUS_ARRIVED;
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Pickup Done | Passengers: %d | Dir: %s",
@@ -204,7 +202,7 @@ void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
         {
             result->success = false;
             result->final_floor = current_floor_;
-            goal_handle->set_canceled(result);
+            goal_handle->canceled(result);
             RCLCPP_INFO(this->get_logger(), "Goal canceled");
             return;
         }
@@ -236,7 +234,7 @@ void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
     // 到达目标楼层. 开关门接乘客
     RCLCPP_INFO(this->get_logger(), "开关门...");
     status_ = ElevatorStatus::STATUS_DROPOFF;
-    std::this_thread::sleep_for(std::chrono::second(1));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     passenger_count_--;
     // 发布反馈
     feedback->current_floor = current_floor_;
@@ -247,7 +245,7 @@ void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
                 current_floor_,
                 feedback->current_load,
                 (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
-    std::this_thread::sleep_for(std::chrono::second(1));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     feedback->status = ElevatorStatus::STATUS_ARRIVED;
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Dropping off at %d | Passengers: %d | Dir: %s",
@@ -260,7 +258,7 @@ void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
     status_ = ElevatorStatus::STATUS_IDLE;
     result->success = true;
     result->final_floor = current_floor_;
-    goal_handle->set_succeeded(result);
+    goal_handle->succeed(result);
     // 计算总时间
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
