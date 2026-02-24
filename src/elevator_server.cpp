@@ -156,7 +156,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
 
         // 发布反馈
         feedback->current_floor = current_floor_;
-        feedback->status = (current_floor_ < initial_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN;
+        feedback->status = static_cast<uint32_t>((current_floor_ < initial_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN);
         feedback->current_load = passenger_count_;
         goal_handle->publish_feedback(feedback);
         RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (pickup) | Passengers: %d | Dir: %s",
@@ -176,7 +176,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
     passenger_count_++;
     // 发布反馈
     feedback->current_floor = current_floor_;
-    feedback->status = ElevatorStatus::STATUS_PICKUP;
+    feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_PICKUP);
     feedback->current_load = passenger_count_;
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
@@ -184,7 +184,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
                 feedback->current_load,
                 (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    feedback->status = ElevatorStatus::STATUS_ARRIVED;
+    feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_ARRIVED);
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Pickup Done | Passengers: %d | Dir: %s",
                 current_floor_,
@@ -218,7 +218,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
 
         // 发布反馈
         feedback->current_floor = current_floor_;
-        feedback->status = (current_floor_ < target_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN;
+        feedback->status = static_cast<uint32_t>(((current_floor_ < target_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN));
         feedback->current_load = passenger_count_;
         goal_handle->publish_feedback(feedback);
         RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (dropoff) | Passengers: %d | Dir: %s",
@@ -238,7 +238,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
     passenger_count_--;
     // 发布反馈
     feedback->current_floor = current_floor_;
-    feedback->status = ElevatorStatus::STATUS_DROPOFF;
+    feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_DROPOFF);
     feedback->current_load = passenger_count_;
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
@@ -246,7 +246,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
                 feedback->current_load,
                 (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    feedback->status = ElevatorStatus::STATUS_ARRIVED;
+    feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_ARRIVED);
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Dropping off at %d | Passengers: %d | Dir: %s",
                 current_floor_,
@@ -272,4 +272,19 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
                 duration.count()); 
 
     
+}
+
+int main(int argc, char **argv)
+{
+    try {
+        rclcpp::init(argc, argv);
+        auto node = std::make_shared<ElevatorActionServer>();
+        rclcpp::spin(node);
+        rclcpp::shutdown();
+        return 0;
+    } catch (const std::exception &e) {
+        RCLCPP_ERROR(rclcpp::get_logger("main"), "Error: %s", e.what());
+        rclcpp::shutdown();
+        return 1;
+    }
 }
