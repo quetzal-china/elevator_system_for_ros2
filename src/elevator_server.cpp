@@ -114,12 +114,14 @@ ElevatorActionServer() : Node("elevator_action_server")
 // execute函数实现
 void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
 {
-    RCLCPP_INFO(this->get_logger(), "Executing goal";
+    RCLCPP_INFO(this->get_logger(), "Executing goal...");
 
     // 获取目标信息
     auto goal = goal_handle->get_goal();
     auto feedback = std::make_shared<Elevator::Feedback>();
     auto result = std::make_shared<Elevator::Result>();
+    // 记录开始时间
+    auto start_time = std::chrono::steady_clock::now();
 
     uint32_t  initial_floor = goal->initial_floor;
     uint32_t  target_floor = goal->target_floor;
@@ -192,5 +194,84 @@ void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
                 (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
     
     // 步骤3: 移动到目标楼层
+    RCLCPP_INFO(this->get_logger(), "正在前往 %d 楼送乘客...", target_floor);
+    status_ = (target_floor > current_floor_) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN;
+    // 移动逻辑
+    while (current_floor_ != target_floor && rclcpp::ok())
+    {
+        // 检查是否收到了取消请求
+        if (goal_handle->is_cancel_requested())
+        {
+            result->success = false;
+            result->final_floor = current_floor_;
+            goal_handle->set_canceled(result);
+            RCLCPP_INFO(this->get_logger(), "Goal canceled");
+            return;
+        }
+        // 否则正常执行移动
+        if (target_floor > current_floor_)
+        {
+            current_floor_++;
+        }
+        else
+        {
+            current_floor_--;
+        }
 
+        // 发布反馈
+        feedback->current_floor = current_floor_;
+        feedback->status = (current_floor_ < target_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN;
+        feedback->current_load = passenger_count_;
+        goal_handle->publish_feedback(feedback);
+        RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (dropoff) | Passengers: %d | Dir: %s",
+                    current_floor_,
+                    (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN",
+                    target_floor,
+                    feedback->current_load,
+                    (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+        // 等待
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    // 到达目标楼层. 开关门接乘客
+    RCLCPP_INFO(this->get_logger(), "开关门...");
+    status_ = ElevatorStatus::STATUS_DROPOFF;
+    std::this_thread::sleep_for(std::chrono::second(1));
+    passenger_count_--;
+    // 发布反馈
+    feedback->current_floor = current_floor_;
+    feedback->status = ElevatorStatus::STATUS_DROPOFF;
+    feedback->current_load = passenger_count_;
+    goal_handle->publish_feedback(feedback);
+    RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
+                current_floor_,
+                feedback->current_load,
+                (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+    std::this_thread::sleep_for(std::chrono::second(1));
+    feedback->status = ElevatorStatus::STATUS_ARRIVED;
+    goal_handle->publish_feedback(feedback);
+    RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Dropping off at %d | Passengers: %d | Dir: %s",
+                current_floor_,
+                target_floor,
+                feedback->current_load,
+                (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+    
+    // 成功完成任务
+    status_ = ElevatorStatus::STATUS_IDLE;
+    result->success = true;
+    result->final_floor = current_floor_;
+    goal_handle->set_succeeded(result);
+    // 计算总时间
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+
+    RCLCPP_INFO(this->get_logger(), "[Result] Request Done!");
+    RCLCPP_INFO(this->get_logger(), "Success: Successfully dropped off at floor %d (pickup from %d)",
+                target_floor,
+                initial_floor);
+    RCLCPP_INFO(this->get_logger(), "Target floor: %d", target_floor);
+    RCLCPP_INFO(this->get_logger(), "Total time: %d s", 
+                duration.count()); 
+
+    
 }
