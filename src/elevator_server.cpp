@@ -168,4 +168,29 @@ void execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
         // 等待
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
+
+    // 退出while循环说明到达乘客出发楼层, 或者电梯被取消, 或者程序意外中断
+    // 步骤2: 开关门接乘客
+    status_ = ElevatorStatus::STATUS_PICKUP;
+    // 增加乘客数量
+    passenger_count_++;
+    // 发布反馈
+    feedback->current_floor = current_floor_;
+    feedback->status = ElevatorStatus::STATUS_PICKUP;
+    feedback->current_load = passenger_count_;
+    goal_handle->publish_feedback(feedback);
+    RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
+                current_floor_,
+                feedback->current_load,
+                (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+    std::this_thread::sleep_for(std::chrono::second(1));
+    feedback->status = ElevatorStatus::STATUS_ARRIVED;
+    goal_handle->publish_feedback(feedback);
+    RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Pickup Done | Passengers: %d | Dir: %s",
+                current_floor_,
+                feedback->current_load,
+                (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+    
+    // 步骤3: 移动到目标楼层
+
 }
