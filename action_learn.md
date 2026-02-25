@@ -122,7 +122,7 @@ this->action_server_ = rclcpp_action::create_server<ActionType>(
 | `goal_handle->succeed(result)` | 标记任务成功完成 |
 | `goal_handle->canceled(result)` | 标记任务被取消 |
 | `goal_handle->abort(result)` | 标记任务中止/失败 |
-| `goal_handle->is_cancel_requested()` | 检查是否收到取消请求 |
+| `goal_handle->is_canceling()` | 检查是否收到取消请求 |
 | `goal_handle->get_goal()` | 获取目标信息 |
 
 ### 3.3 三个回调函数

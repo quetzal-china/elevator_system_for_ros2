@@ -1,0 +1,356 @@
+## 三、项目问题与解决方案
+
+> **说明**：问题一至问题五均出现在服务端文件 `src/elevator_system/src/elevator_server.cpp` 的编写和编译过程中。
+
+### 3.1 问题记录格式
+每个问题记录包含以下要素：
+- **问题描述**：详细描述遇到的问题
+- **发生环境**：问题发生的具体环境和条件
+- **影响范围**：问题影响的功能模块
+- **涉及文件**：问题出现的具体文件
+- **解决步骤**：具体的解决方法和步骤
+- **最终结果**：问题解决后的效果
+
+---
+
+### 3.2 问题一：包装函数的右值引用问题
+
+**涉及文件**：`src/elevator_system/src/elevator_server.cpp` 第 92-97 行
+
+**问题描述**：
+在实现 `handle_accepted` 函数时，使用包装函数启动新线程执行任务时出现右值引用不匹配的问题。
+
+**发生环境**：
+- ROS2 Foxy 环境
+- C++ 实现的 Action 服务器
+- 使用 `std::thread` 创建线程执行任务
+
+**影响范围**：
+- 服务器端的任务执行机制
+- 线程创建和参数传递
+
+**解决步骤**：
+1. 分析问题：`std::thread` 创建线程时会复制参数，而包装函数使用了常量引用参数
+2. 修改包装函数的参数类型，将引用改为值传递
+3. 确保参数类型与 `execute` 函数的参数类型匹配
+
+**代码修复**：
+```cpp
+// 修复前（错误：常量引用传递）
+static void execute_wrapper(
+        ElevatorActionServer* instance, 
+        const std::shared_ptr<GoalHandleElevator> &handle)
+    {
+        instance->execute(handle);
+    }
+
+// 修复后（正确：值传递）
+static void execute_wrapper(
+        ElevatorActionServer* instance, 
+        std::shared_ptr<GoalHandleElevator> handle)
+    {
+        instance->execute(handle);
+    }
+```
+
+**最终结果**：
+线程创建成功，任务能够正常执行，解决了右值引用不匹配的问题。
+
+---
+
+### 3.3 问题二：ROS2 版本 API 兼容性（取消请求检测方法）
+
+**涉及文件**：`src/elevator_system/src/elevator_server.cpp` 第 149 行、第 213 行
+
+**问题描述**：
+在检查取消请求时，使用了错误的 API 方法名，导致编译失败。
+
+**发生环境**：
+- ROS2 Foxy 环境
+- C++ 实现的 Action 服务器
+- 处理任务取消逻辑
+
+**影响范围**：
+- 服务器端的取消请求处理
+- 任务执行的中断机制
+
+**解决步骤**：
+1. 查阅 ROS2 Foxy 官方文档和源码
+2. 确认正确的方法名
+3. 统一修改为正确的 API
+
+**代码修复**：
+```cpp
+// 修复前（错误：该方法在 ROS2 Foxy 中不存在）
+if (goal_handle->cancel_requested())
+if (goal_handle->is_cancel_requested())
+
+// 修复后（正确：ROS2 Foxy 使用 is_canceling()）
+if (goal_handle->is_canceling())
+```
+
+**版本差异对照**：
+| ROS2 版本 | 方法名 |
+|-----------|--------|
+| Foxy (2020) | `is_canceling()` |
+| Galactic/Humble+ (2021+) | `is_cancel_requested()` |
+
+**最终结果**：
+取消请求处理逻辑正常工作，与 ROS2 Foxy API 保持兼容。
+
+---
+
+### 3.4 问题三：类型安全性问题（Direction 枚举与 uint32_t 比较）
+
+**涉及文件**：`src/elevator_system/src/elevator_server.cpp` 第 164、167、185、192、226、229、247、255 行
+
+**问题描述**：
+在处理电梯方向信息时，直接使用数字 `0` 和 `1` 进行比较，而不是使用定义的 `Direction` 枚举。
+
+**发生环境**：
+- C++ 实现的反馈信息处理
+- 日志输出和状态判断
+
+**影响范围**：
+- 代码可读性和可维护性
+- 类型安全性
+
+**解决步骤**：
+1. 定义 `Direction` 枚举类，包含 `DIRECTION_UP` 和 `DIRECTION_DOWN`
+2. 使用 `static_cast` 进行类型转换
+3. 使用枚举值进行比较，提高代码可读性
+
+**代码修复**：
+```cpp
+// 修复前（错误：类型不匹配）
+(feedback->direction == Direction::DIRECTION_UP)
+
+// 修复后（正确：显式类型转换）
+(static_cast<uint32_t>(Direction::DIRECTION_UP) == feedback->direction)
+
+// 或者简单方案（直接数字比较）
+(feedback->direction == 0)  // 0=UP, 1=DOWN
+```
+
+**最终结果**：
+代码更加类型安全，可读性和可维护性得到提高。
+
+---
+
+### 3.5 问题四：构建依赖配置错误（rclpy_action vs rclcpp_action）
+
+**涉及文件**：
+- `src/elevator_system/package.xml`
+- `src/elevator_system/CMakeLists.txt`
+
+**问题描述**：
+在编译项目时，CMake 报错找不到 `rclpy_action` 包。
+
+**发生环境**：
+- ROS2 Foxy 环境
+- C++ 项目构建过程
+- CMake 配置
+
+**影响范围**：
+- 项目构建过程
+- 依赖管理
+
+**解决步骤**：
+1. 分析错误信息：C++ 项目不应该依赖 Python 的 `rclpy_action`
+2. 修改 `package.xml` 和 `CMakeLists.txt`
+3. 将 `rclpy_action` 替换为 C++ 对应的 `rclcpp_action`
+
+**代码修复**：
+```cmake
+// package.xml - 修复前
+<depend>rclpy_action</depend>
+
+// package.xml - 修复后
+<depend>rclcpp_action</depend>
+```
+
+```cmake
+// CMakeLists.txt - 修复前
+find_package(rclpy_action REQUIRED)
+
+// CMakeLists.txt - 修复后
+find_package(rclcpp_action REQUIRED)
+```
+
+**最终结果**：
+项目成功编译，依赖配置正确。
+
+---
+
+### 3.6 问题五：服务端编译错误汇总（elevator_server.cpp）
+
+**涉及文件**：`src/elevator_system/src/elevator_server.cpp`
+
+**问题描述**：
+在编译电梯调度服务器端代码时，遇到多个 C++ 编译错误，涉及类型别名可见性、API 兼容性、线程参数传递等问题。
+
+**发生环境**：
+- ROS2 Foxy 环境
+- C++ 实现的 Action 服务器
+- 编译命令：`colcon build --packages-select elevator_system`
+
+**影响范围**：
+- 服务器端可执行文件无法生成
+- 项目无法运行测试
+- 电梯调度功能无法验证
+
+---
+
+#### 错误 5.1：包装函数中类型别名不可见
+
+**问题位置**：第 94-97 行
+
+**问题代码**：
+```cpp
+// 类外部的包装函数
+static void execute_wrapper(
+    ElevatorActionServer* instance, 
+    std::shared_ptr<GoalHandleElevator> handle)  // ← GoalHandleElevator 未定义
+```
+
+**原因**：`GoalHandleElevator` 是类内的 `using` 类型别名，在类外不可见。
+
+**解决方案**：使用完整的类型名称
+```cpp
+// 修复后
+static void execute_wrapper(
+    ElevatorActionServer* instance, 
+    std::shared_ptr<rclcpp_action::ServerGoalHandle<Elevator>> handle)
+```
+
+---
+
+#### 错误 5.2：get_goal_id().id 不存在
+
+**问题位置**：第 87 行
+
+**问题代码**：
+```cpp
+RCLCPP_INFO(this->get_logger(), "Cancel request received for goal %d", 
+            goal_handle->get_goal_id().id);  // ← 错误
+```
+
+**原因**：`GoalUUID` 类型是 `std::array<unsigned char, 16>`，没有 `.id` 成员。
+
+**解决方案**：删除 `.id`，简化日志
+```cpp
+// 修复后
+RCLCPP_INFO(this->get_logger(), "Cancel request received");
+```
+
+---
+
+#### 错误 5.3：is_canceling() 方法名错误
+
+**问题位置**：第 149 行、第 213 行
+
+**问题代码**：
+```cpp
+if (goal_handle->is_cancel_requested())  // ← ROS2 Foxy 中不存在
+```
+
+**解决方案**：
+```cpp
+// 修复后（ROS2 Foxy）
+if (goal_handle->is_canceling())
+```
+
+---
+
+#### 错误 5.4：std::thread 参数传递方式错误
+
+**问题位置**：第 94-97 行
+
+**解决方案**：改用值传递
+```cpp
+// 修复后
+static void execute_wrapper(
+    ElevatorActionServer* instance, 
+    std::shared_ptr<GoalHandleElevator> handle)  // ← 值传递
+```
+
+---
+
+#### 错误 5.5：Direction 枚举与 uint32_t 类型不匹配
+
+**问题位置**：第 164、167、185、192、226、229、247、255 行
+
+**解决方案**：
+```cpp
+// 方案 1：直接数字比较（简单）
+if (feedback->direction == 0)  // 0=UP, 1=DOWN
+
+// 方案 2：显式类型转换（推荐）
+if (static_cast<uint32_t>(Direction::DIRECTION_UP) == feedback->direction)
+```
+
+---
+
+**最终结果**：
+所有编译错误已解决，服务器端代码成功编译并通过测试。
+
+**经验总结**：
+1. **类型别名作用域**：类内的 `using` 类型别名在类外不可见，需要使用完整类型名称
+2. **ROS2 版本差异**：不同 ROS2 版本的 API 可能有差异，需查阅对应版本文档
+   - Foxy: `is_canceling()`
+   - Galactic/Humble+: `is_cancel_requested()`
+3. **智能指针传递**：使用 `std::thread` 时，智能指针应使用值传递而非引用传递
+4. **类型安全**：枚举类型与基础类型比较时需要显式转换
+5. **编译错误分析**：仔细阅读错误信息，逐条解决，不要遗漏
+
+---
+
+### 3.7 问题六：取消请求处理不完整
+
+**涉及文件**：`src/elevator_system/src/elevator_server.cpp` 第 149-157 行、第 213-220 行
+
+**问题描述**：
+在处理取消请求时，只设置了结果的部分字段，缺少完整性。
+
+**发生环境**：
+- 任务执行过程中收到取消请求
+- 结果构建和返回
+
+**影响范围**：
+- 取消请求的处理逻辑
+- 客户端收到的取消结果
+
+**解决步骤**：
+1. 分析 `Result` 消息结构
+2. 确保取消时设置所有必要的字段
+3. 保持与成功完成时的字段设置一致
+
+**代码修复**：
+```cpp
+if (goal_handle->is_canceling())
+{
+    result->success = false;
+    result->final_floor = current_floor_;
+    result->message = "任务被取消";
+    goal_handle->canceled(result);  // 注意：ROS2 Foxy 使用 canceled() 而非 set_canceled()
+    RCLCPP_INFO(this->get_logger(), "Goal canceled");
+    return;
+}
+```
+
+**最终结果**：
+取消请求处理完整，客户端收到的结果信息全面。
+
+---
+
+### 服务端问题汇总表
+
+| 问题编号 | 问题名称 | 涉及文件 | 行号 | 解决方案 |
+|----------|----------|----------|------|----------|
+| 问题一 | 包装函数右值引用 | elevator_server.cpp | 92-97 | 引用改为值传递 |
+| 问题二 | ROS2 版本 API 兼容性 | elevator_server.cpp | 149, 213 | `is_cancel_requested()` → `is_canceling()` |
+| 问题三 | Direction 类型安全 | elevator_server.cpp | 多处 | 使用 `static_cast` 转换 |
+| 问题四 | 构建依赖配置 | package.xml, CMakeLists.txt | - | `rclpy_action` → `rclcpp_action` |
+| 问题五 | 编译错误汇总 | elevator_server.cpp | 多处 | 综合修复 5 个子问题 |
+| 问题六 | 取消请求处理 | elevator_server.cpp | 149-157, 213-220 | 完善 Result 字段设置 |
+
