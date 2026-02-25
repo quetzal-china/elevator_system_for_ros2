@@ -2,6 +2,7 @@
     "configurations": [
         {
             "name": "Linux",
+            "compileCommands": "/home/liuyuxin/ros2_ws/build/elevator_system/compile_commands.json",
             "includePath": [
                 "${workspaceFolder}/**",
                 "/opt/ros/foxy/include/**",
@@ -9,7 +10,7 @@
                 "/usr/include/eigen3"
             ],
             "defines": [],
-            "compilerPath": "/usr/bin/gcc",
+            "compilerPath": "/usr/bin/g++",
             "cStandard": "c17",
             "cppStandard": "c++23",
             "intelliSenseMode": "linux-gcc-x64"

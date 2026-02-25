@@ -308,13 +308,121 @@ private:
 ### 4.5 注意事项
 
 - `detach()` 会使线程在后台运行，不需要等待其结束
-- 使用 `std::bind` 或lambda表达式传递成员函数
+- 使用 `std::bind` 或 lambda 表达式传递成员函数
 - 确保在节点销毁前线程执行完毕
 
 ---
 
+## 5. C++ std::future 异步操作
+
+### 5.1 什么是 std::future
+
+C++11 引入了 `<future>` 头文件，提供了一种异步编程机制，允许程序在等待某个操作完成时继续执行其他任务。
+
+**核心概念**：
+- `std::future`：表示异步操作的结果，可以查询状态、获取结果或等待完成
+- `std::promise`：与 `std::future` 配对使用，用于设置异步操作的结果
+- `std::packaged_task`：封装函数或可调用对象，使其可以作为异步任务执行
+- `std::async`：便捷的函数，用于启动异步任务并返回 `std::future`
+
+### 5.2 std::promise 和 std::future 配对使用
+
+```cpp
+#include <iostream>
+#include <future>
+#include <thread>
+
+int main() {
+    std::promise<int> prom;          // 创建 promise
+    std::future<int> fut = prom.get_future();  // 获取对应的 future
+    
+    // 在另一个线程中设置结果
+    std::thread t([&prom]() {
+        prom.set_value(10);  // 设置结果
+    });
+    
+    // 等待并获取结果
+    std::cout << "Future value: " << fut.get() << std::endl;
+    
+    t.join();
+    return 0;
+}
+```
+
+### 5.3 std::async 启动异步任务
+
+```cpp
+#include <iostream>
+#include <future>
+
+int main() {
+    // 启动异步任务，立即返回 future
+    std::future<int> fut = std::async(std::launch::async, [](int x) {
+        return x * x;
+    }, 5);
+    
+    // 获取结果（会等待任务完成）
+    std::cout << "Result: " << fut.get() << std::endl;
+    return 0;
+}
+```
+
+**参数说明**：
+- `std::launch::async`：立即在新线程中执行
+- `std::launch::deferred`：延迟到调用 `get()` 时才执行
+- `std::launch::async | std::launch::deferred`：默认值，由系统决定
+
+### 5.4 在 ROS2 Action 客户端中的应用
+
+在 ROS2 Action 客户端中，`std::future` 用于等待异步操作的结果：
+
+```cpp
+// 1. 发送目标后获取 future
+auto send_goal_future = action_client->send_goal_async(goal_msg);
+
+// 2. 等待目标被接受
+send_goal_future.wait();  // 等待
+auto goal_handle = send_goal_future.get();  // 获取结果
+
+// 3. 等待最终结果
+auto result_future = goal_handle->get_result_async();
+result_future.wait();  // 等待结果
+auto result = result_future.get();  // 获取结果
+```
+
+### 5.5 std::future 常用方法
+
+| 方法 | 作用 |
+|------|------|
+| `get()` | 获取结果并等待完成（只能调用一次） |
+| `wait()` | 等待完成，不获取结果 |
+| `wait_for(duration)` | 等待指定时间 |
+| `wait_until(timepoint)` | 等待到指定时间点 |
+| `valid()` | 检查是否包含有效结果 |
+
+### 5.6 异常处理
+
+异步操作抛出的异常会被 `std::future` 捕获，通过 `.get()` 重新抛出。
+
+```cpp
+try {
+    fut.get();  // 异常在这里重新抛出
+} catch (const std::exception& e) {
+    std::cout << "Caught exception: " << e.what() << std::endl;
+}
+```
+
+---
+
 ## 小结
-Action通信适用于**长时间执行**且需要**中间反馈**的任务，如：
+Action 通信适用于**长时间执行**且需要**中间反馈**的任务，如：
 - 机器人导航
 - 机械臂运动
 - 电梯调度（本项目）
+
+**常用异步机制对比**：
+| 机制 | 适用场景 | 特点 |
+|------|----------|------|
+| `std::thread` | 简单并行任务 | 直接创建线程，手动管理 |
+| `std::future` | 异步操作结果 | 等待结果，获取返回值 |
+| `std::async` | 简单异步任务 | 自动管理线程，返回 future |
