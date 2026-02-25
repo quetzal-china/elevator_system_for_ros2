@@ -55,10 +55,10 @@ rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
     std::shared_ptr<const Elevator::Goal> goal)
 {
     RCLCPP_INFO(this->get_logger(), "Passenger at Floor %d, pressing %s", 
-                goal->initial_floor, goal->direction_to_go == 0 ? "🔼 UP" : "🔽 DOWN");
+                goal->initial_floor, goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP) ? "🔼 UP" : "🔽 DOWN");
 
     // 保证方向合理
-    bool is_direction_valid = (goal->target_floor > goal->initial_floor) == (goal->direction_to_go == 0);
+    bool is_direction_valid = (goal->target_floor > goal->initial_floor) == (goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP));
 
     // 验证楼层是否合法 (1-10)
     if (goal->initial_floor < GROUND_FLOOR || 
@@ -139,9 +139,9 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
     // 记录开始时间
     auto start_time = std::chrono::steady_clock::now();
 
-    uint32_t  initial_floor = goal->initial_floor;
-    uint32_t  target_floor = goal->target_floor;
-    uint32_t  direction_to_go = goal->direction_to_go;
+    int initial_floor = static_cast<int>(goal->initial_floor);
+    int target_floor = static_cast<int>(goal->target_floor);
+    uint32_t direction_to_go = goal->direction_to_go;
     feedback->direction = goal->direction_to_go;
 
     // 步骤1: 移动到乘客所在楼层
@@ -154,7 +154,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
         if (goal_handle->is_canceling())
         {
             result->success = false;
-            result->final_floor = current_floor_;
+            result->final_floor = static_cast<uint32_t>(current_floor_);
             result->message = "Goal canceled by client";
             goal_handle->canceled(result);
             RCLCPP_INFO(this->get_logger(), "Goal canceled");
@@ -172,9 +172,9 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
         }
 
         // 发布反馈
-        feedback->current_floor = current_floor_;
+        feedback->current_floor = static_cast<uint32_t>(current_floor_);
         feedback->status = static_cast<uint32_t>((current_floor_ < initial_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN);
-        feedback->current_load = passenger_count_;
+        feedback->current_load = static_cast<uint32_t>(passenger_count_);
         goal_handle->publish_feedback(feedback);
         RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (pickup) | Passengers: %d | Dir: %s",
                     current_floor_,
@@ -192,20 +192,20 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
     // 增加乘客数量
     passenger_count_++;
     // 发布反馈
-    feedback->current_floor = current_floor_;
+    feedback->current_floor = static_cast<uint32_t>(current_floor_);
     feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_PICKUP);
-    feedback->current_load = passenger_count_;
+    feedback->current_load = static_cast<uint32_t>(passenger_count_);
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
                 current_floor_,
-                feedback->current_load,
-                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
+                passenger_count_,
+                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");
     std::this_thread::sleep_for(std::chrono::seconds(1));
     feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_ARRIVED);
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Pickup Done | Passengers: %d | Dir: %s",
                 current_floor_,
-                feedback->current_load,
+                passenger_count_,
                 (static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
     
     // 步骤3: 移动到目标楼层
@@ -218,7 +218,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
         if (goal_handle->is_canceling())
         {
             result->success = false;
-            result->final_floor = current_floor_;
+            result->final_floor = static_cast<uint32_t>(current_floor_);
             result->message = "Goal canceled by client";
             goal_handle->canceled(result);
             RCLCPP_INFO(this->get_logger(), "Goal canceled");
@@ -235,15 +235,15 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
         }
 
         // 发布反馈
-        feedback->current_floor = current_floor_;
+        feedback->current_floor = static_cast<uint32_t>(current_floor_);
         feedback->status = static_cast<uint32_t>(((current_floor_ < target_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN));
-        feedback->current_load = passenger_count_;
+        feedback->current_load = static_cast<uint32_t>(passenger_count_);
         goal_handle->publish_feedback(feedback);
         RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (dropoff) | Passengers: %d | Dir: %s",
                     current_floor_,
                     static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN",
                     target_floor,
-                    feedback->current_load,
+                    passenger_count_,
                     static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
         // 等待
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -255,27 +255,27 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
     std::this_thread::sleep_for(std::chrono::seconds(1));
     passenger_count_--;
     // 发布反馈
-    feedback->current_floor = current_floor_;
+    feedback->current_floor = static_cast<uint32_t>(current_floor_);
     feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_DROPOFF);
-    feedback->current_load = passenger_count_;
+    feedback->current_load = static_cast<uint32_t>(passenger_count_);
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
                 current_floor_,
-                feedback->current_load,
-                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
+                passenger_count_,
+                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");
     std::this_thread::sleep_for(std::chrono::seconds(1));
     feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_ARRIVED);
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Dropping off at %d | Passengers: %d | Dir: %s",
                 current_floor_,
                 target_floor,
-                feedback->current_load,
-                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
-    
+                passenger_count_,
+                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");
+
     // 成功完成任务
     status_ = ElevatorStatus::STATUS_IDLE;
     result->success = true;
-    result->final_floor = current_floor_;
+    result->final_floor = static_cast<uint32_t>(current_floor_);
     result->message = "Task completed successfully";
     goal_handle->succeed(result);
     // 计算总时间

@@ -25,8 +25,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Elevator.action"
 )
 
-# 导出依赖
+# 导出依赖和包含目录
 ament_export_dependencies(rosidl_default_runtime)
+ament_export_include_directories(include)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -39,7 +40,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-# 添加可执行文件
+# 添加服务端可执行文件
 add_executable(elevator_server src/elevator_server.cpp)
 # 添加 include 目录
 target_include_directories(elevator_server PRIVATE
@@ -59,6 +60,28 @@ target_link_libraries(elevator_server
 )
 # 安装可执行文件
 install(TARGETS elevator_server
+  DESTINATION lib/${PROJECT_NAME})
+
+# 客户端可执行文件
+add_executable(elevator_client src/elevator_client.cpp)
+# 添加 include 目录
+target_include_directories(elevator_client PRIVATE
+  include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+# 链接依赖库
+ament_target_dependencies(elevator_client
+  rclcpp
+  rclcpp_action
+)
+# 链接自动生成的 Action 接口库
+target_link_libraries(elevator_client
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+  ${PROJECT_NAME}__rosidl_typesupport_fastrtps_cpp
+  ${PROJECT_NAME}__rosidl_typesupport_introspection_cpp
+)
+# 安装可执行文件
+install(TARGETS elevator_client
   DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
