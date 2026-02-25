@@ -39,10 +39,12 @@ private:
         const std::shared_ptr<GoalHandleElevator> goal_handle);
 
     // 添加包装函数的友元声明, 用于在execute中调用, 否则会报错!
-    friend void execute_wrapper(ElevatorActionServer*, const std::shared_ptr<GoalHandleElevator>&);
+    friend void execute_wrapper(
+        ElevatorActionServer* instance, 
+        std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> handle);
 
     // 执行任务的函数 处理核心逻辑
-    void execute(const std::shared_ptr<GoalHandleElevator> goal_handle);
+    void execute(const std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> goal_handle);
 
 };
 
@@ -92,9 +94,9 @@ rclcpp_action::CancelResponse ElevatorActionServer::handle_cancel(
 }
 
 // 使用包装函数(因为本人觉得包装函数的方法比lambda表达式和std::bind()函数更清晰)
-static void execute_wrapper(
+void execute_wrapper(
     ElevatorActionServer* instance, 
-    std::shared_ptr<rclcpp_action::ServerGoalHandle<Elevator>> handle)
+    std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> handle)
     {
         instance->execute(handle);
     }
