@@ -1,0 +1,29 @@
+# --- ROS 2 标准构建产物 (必须忽略) ---
+build/
+install/
+log/
+
+# --- 编译生成的中间文件 ---
+*.pyc
+__pycache__/
+*.so
+*.o
+*.a
+*.la
+
+# --- IDE 和编辑器配置 (可选，建议忽略) ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Python 虚拟环境 (如果有) ---
+venv/
+.env/
+
+# --- CMake 缓存 ---
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json  
