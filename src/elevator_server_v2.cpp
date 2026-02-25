@@ -117,8 +117,9 @@ void ElevatorActionServer::handle_accepted(
 
 
 // 构造函数实现
-ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server")
+ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v2")
 {
+    RCLCPP_INFO(this->get_logger(), "电梯 Action 服务器 V2 已启动");
     // 从参数服务器获取参数
     ground_floor_ = this->declare_parameter<int>("ground_floor", 1);
     top_floor_ = this->declare_parameter<int>("top_floor", 10);

@@ -84,4 +84,31 @@ target_link_libraries(elevator_client
 install(TARGETS elevator_client
   DESTINATION lib/${PROJECT_NAME})
 
+
+
+# --- Task 2 (V2) 配置 ---
+
+# 1. 编译服务端 V2
+add_executable(elevator_server_v2 src/elevator_server_v2.cpp)
+ament_target_dependencies(elevator_server_v2
+  rclcpp
+  rclcpp_action
+  elevator_system
+)
+
+# 2. 编译客户端 V2
+add_executable(elevator_client_v2 src/elevator_client_v2.cpp)
+ament_target_dependencies(elevator_client_v2
+  rclcpp
+  rclcpp_action
+  elevator_system
+)
+
+# 3. 安装 V2 可执行文件
+install(TARGETS
+  elevator_server_v2
+  elevator_client_v2
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

@@ -132,8 +132,6 @@ void ElevatorActionClient::result_callback(const GoalHandleElevator::WrappedResu
         break;
     }
     
-    // 如果这是一个调度系统，你可以在这里触发下一个任务
-    // 例如: schedule_next_task(); 
 }
 
 int main(int argc, char **argv)
@@ -141,8 +139,14 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
     auto client = std::make_shared<ElevatorActionClient>();
 
-    // 测试发送一个任务
-    client->send_goal(3, 7);
+    // 解析命令行参数
+    if (argc < 3) {
+        RCLCPP_ERROR(client->get_logger(), "Usage: elevator_client <initial_floor> <target_floor>");
+        return 1;
+    }
+    int initial = 3;
+    int target = 7;
+    client->send_goal(initial, target);            
 
     // 必须使用 spin 来驱动回调队列
     // send_goal 是非阻塞的，主线程必须在这里 spin 才能接收到服务器的回应
