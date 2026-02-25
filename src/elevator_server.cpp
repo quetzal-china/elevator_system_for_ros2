@@ -19,13 +19,24 @@ public:
     ElevatorActionServer();
 
 private:
-    // Action服务器
+    // Action 服务器
     rclcpp_action::Server<Elevator>::SharedPtr action_server_;
 
     // 电梯状态变量
     int current_floor_;          // 当前楼层
     ElevatorStatus status_;      // 电梯状态
     int passenger_count_;        // 乘客数量
+
+    // 三个回调函数
+    rclcpp_action::GoalResponse handle_goal(
+        const rclcpp_action::GoalUUID &uuid,
+        std::shared_ptr<const Elevator::Goal> goal);
+
+    rclcpp_action::CancelResponse handle_cancel(
+        const std::shared_ptr<GoalHandleElevator> goal_handle);
+
+    void handle_accepted(
+        const std::shared_ptr<GoalHandleElevator> goal_handle);
 
     // 执行任务的函数 处理核心逻辑
     void execute(const std::shared_ptr<GoalHandleElevator> goal_handle);
@@ -139,6 +150,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
         {
             result->success = false;
             result->final_floor = current_floor_;
+            result->message = "Goal canceled by client";
             goal_handle->canceled(result);
             RCLCPP_INFO(this->get_logger(), "Goal canceled");
             return;
@@ -161,10 +173,10 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
         goal_handle->publish_feedback(feedback);
         RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (pickup) | Passengers: %d | Dir: %s",
                     current_floor_,
-                    (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN",
+                    static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN",
                     initial_floor,
                     feedback->current_load,
-                    (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+                    static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
         // 等待
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
@@ -182,14 +194,14 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
                 current_floor_,
                 feedback->current_load,
-                (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
     std::this_thread::sleep_for(std::chrono::seconds(1));
     feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_ARRIVED);
     goal_handle->publish_feedback(feedback);
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Pickup Done | Passengers: %d | Dir: %s",
                 current_floor_,
                 feedback->current_load,
-                (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+                (static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
     
     // 步骤3: 移动到目标楼层
     RCLCPP_INFO(this->get_logger(), "正在前往 %d 楼送乘客...", target_floor);
@@ -202,6 +214,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
         {
             result->success = false;
             result->final_floor = current_floor_;
+            result->message = "Goal canceled by client";
             goal_handle->canceled(result);
             RCLCPP_INFO(this->get_logger(), "Goal canceled");
             return;
@@ -223,10 +236,10 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
         goal_handle->publish_feedback(feedback);
         RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (dropoff) | Passengers: %d | Dir: %s",
                     current_floor_,
-                    (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN",
+                    static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN",
                     target_floor,
                     feedback->current_load,
-                    (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+                    static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
         // 等待
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
@@ -244,7 +257,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
     RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
                 current_floor_,
                 feedback->current_load,
-                (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
     std::this_thread::sleep_for(std::chrono::seconds(1));
     feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_ARRIVED);
     goal_handle->publish_feedback(feedback);
@@ -252,12 +265,13 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
                 current_floor_,
                 target_floor,
                 feedback->current_load,
-                (feedback->direction == Direction::DIRECTION_UP) ? "UP" : "DOWN");  
+                static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
     
     // 成功完成任务
     status_ = ElevatorStatus::STATUS_IDLE;
     result->success = true;
     result->final_floor = current_floor_;
+    result->message = "Task completed successfully";
     goal_handle->succeed(result);
     // 计算总时间
     auto end_time = std::chrono::steady_clock::now();
@@ -283,7 +297,7 @@ int main(int argc, char **argv)
         rclcpp::shutdown();
         return 0;
     } catch (const std::exception &e) {
-        RCLCPP_ERROR(rclcpp::get_logger("main"), "Error: %s", e.what());
+        std::cerr << "Error: " << e.what() << std::endl;
         rclcpp::shutdown();
         return 1;
     }

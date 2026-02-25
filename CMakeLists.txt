@@ -39,4 +39,26 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+# 添加可执行文件
+add_executable(elevator_server src/elevator_server.cpp)
+# 添加 include 目录
+target_include_directories(elevator_server PRIVATE
+  include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+# 链接依赖库
+ament_target_dependencies(elevator_server
+  rclcpp
+  rclcpp_action
+)
+# 链接自动生成的 Action 接口库
+target_link_libraries(elevator_server
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+  ${PROJECT_NAME}__rosidl_typesupport_fastrtps_cpp
+  ${PROJECT_NAME}__rosidl_typesupport_introspection_cpp
+)
+# 安装可执行文件
+install(TARGETS elevator_server
+  DESTINATION lib/${PROJECT_NAME})
+
 ament_package()
