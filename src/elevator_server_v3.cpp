@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <vector>
 #include <algorithm>
+#include <cstdlib> 
 
 /* #define GROUND_FLOOR 1
 #define TOP_FLOOR 10
@@ -74,14 +75,14 @@ private:
     std::vector<Request> onboard_passengers_;
 
     // LOOK算法所需要的核心调度函数, 打 * 号完成了
-    void schedule_loop(const std::shared_ptr<GoalHandleElevator> goal_handle);// *
+    void schedule_loop();// *
     void run_elevator();
     void add_request_to_queue(const Request& request);
     void process_new_requests();// *
     void add_to_stop_plan(const Request& req);// *
-    void move_one_floor(const std::shared_ptr<GoalHandleElevator> goal_handle);
+    void move_one_floor();
     bool need_stop(int floor);
-    void handle_stop(int floor, const std::shared_ptr<GoalHandleElevator> goal_handle);
+    void handle_stop(int floor);
     bool has_pending_stops();// *
     Direction get_initial_direction();// *
 };
@@ -114,6 +115,14 @@ rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
     if (goal->initial_floor == goal->target_floor) {
         RCLCPP_WARN(this->get_logger(), "Invalid request!");
         return rclcpp_action::GoalResponse::REJECT;  // 拒绝
+    }
+
+    // 特殊情况：在顶层按UP或在底层按DOWN
+    if ((goal->initial_floor == top_floor_ && goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP)) ||
+        (goal->initial_floor == ground_floor_ && goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_DOWN)))
+    {
+        RCLCPP_WARN(this->get_logger(), "Invalid request: cannot go that direction from this floor!");
+        return rclcpp_action::GoalResponse::REJECT;
     }
 
     RCLCPP_INFO(this->get_logger(), "Goal accepted by server...");
@@ -150,7 +159,6 @@ void ElevatorActionServer::handle_accepted(
     // 1. 创建Request对象
     Request req;
     req.initial_floor = goal_handle->get_goal()->initial_floor;
-    req.target_floor = goal_handle->get_goal()->target_floor;
     req.direction = static_cast<Direction>(goal_handle->get_goal()->direction_to_go);
     req.goal_handle = goal_handle;
     
@@ -158,8 +166,9 @@ void ElevatorActionServer::handle_accepted(
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         request_queue_.push(req);
-        RCLCPP_INFO(this->get_logger(), "新请求已加入队列: %d楼 -> %d楼", 
-                    req.initial_floor, req.target_floor);
+        RCLCPP_INFO(this->get_logger(), "新请求已加入队列: %d楼, 方向: %s", 
+                    req.initial_floor,
+                    req.direction == Direction::DIRECTION_UP ? "🔼 UP" : "🔽 DOWN");
     }  // 自动解锁
     
     // 3. 通知调度线程有新请求
@@ -167,7 +176,7 @@ void ElevatorActionServer::handle_accepted(
 }
 
 // ==================== 消费者：调度循环 ====================
-void ElevatorActionServer::schedule_loop(const std::shared_ptr<GoalHandleElevator> goal_handle)
+void ElevatorActionServer::schedule_loop()
 {
     RCLCPP_INFO(this->get_logger(), "调度线程已启动");
     
@@ -184,11 +193,11 @@ void ElevatorActionServer::schedule_loop(const std::shared_ptr<GoalHandleElevato
             }
             
             // 移动一层
-            move_one_floor(goal_handle);
+            move_one_floor();
             // 检查是否需要停靠
             if (need_stop(current_floor_))
             {
-                handle_stop(current_floor_, goal_handle);
+                handle_stop(current_floor_);
             }
             // LOOK 算法: 判断是否需要改变方向
             auto& current_stops = (current_direction_ == Direction::DIRECTION_UP) ? up_stops_ : down_stops_;
@@ -261,7 +270,7 @@ ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v3")
 }
 
 // 处理队列中所有新请求
-void ElevatorActionServer::process_new_requests(const std::shared_ptr<GoalHandleElevator> goal_handle)
+void ElevatorActionServer::process_new_requests()
 {
     // 上锁
     std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -324,17 +333,17 @@ bool ElevatorActionServer::has_pending_stops()
 // 获取初始运行方向
 Direction ElevatorActionServer::get_initial_direction()
 {
-    if (!up_stops_.empty() && down_stops_.empty(()))
+    if (!up_stops_.empty() && down_stops_.empty())
     {
         // 只有上行任务
         return Direction::DIRECTION_UP;
     }
-    else if (up_stops_.empty() && !down_stops_.empty(()))
+    else if (up_stops_.empty() && !down_stops_.empty())
     {
         // 只有下行任务
         return Direction::DIRECTION_DOWN;
     }
-    else if (!up_stops.empty() && !down_stops_.empty())
+    else if (!up_stops_.empty() && !down_stops_.empty())
     {
         // 两个方向都有任务, 选择距离当前楼层最近的停靠楼层
         int up_distance = std::abs(up_stops_.front().floor - current_floor_);
@@ -346,13 +355,8 @@ Direction ElevatorActionServer::get_initial_direction()
 }
 
 // 移动一层
-void ElevatorActionServer::move_one_floor(const std::shared_ptr<GoalHandleElevator> goal_handle)
+void ElevatorActionServer::move_one_floor()
 {
-    // 获取目标信息
-    auto goal = goal_handle->get_goal();
-    auto feedback = std::make_shared<Elevator::Feedback>();
-    auto result = std::make_shared<Elevator::Result>();
-
     // 更新楼层
     if (current_direction_ == Direction::DIRECTION_UP)
     {
@@ -365,27 +369,42 @@ void ElevatorActionServer::move_one_floor(const std::shared_ptr<GoalHandleElevat
         status_ = ElevatorStatus::STATUS_MOVING_DOWN;
     }
 
-    feedback->current_floor = static_cast<uint32_t>(current_floor_);
-    feedback->status = static_cast<uint32_t>((current_floor_ < initial_floor) ? ElevatorStatus::STATUS_MOVING_UP : ElevatorStatus::STATUS_MOVING_DOWN);
-    feedback->current_load = static_cast<uint32_t>(passenger_count_);
-    goal_handle->publish_feedback(feedback);
-    RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Moving %s to %d (pickup) | Passengers: %d | Dir: %s",
-                    current_floor_,
-                    static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN",
-                    initial_floor,
-                    feedback->current_load,
-                    static_cast<Direction>(feedback->direction) == Direction::DIRECTION_UP ? "UP" : "DOWN");  
+    // 发布反馈给所有在电梯内的乘客
+    for (const auto& stop : up_stops_) 
+    {
+        if (stop.goal_handle && !stop.is_pickup) 
+        {
+            auto feedback = std::make_shared<Elevator::Feedback>();
+            feedback->current_floor = static_cast<uint32_t>(current_floor_);
+            feedback->status = static_cast<uint32_t>(status_);
+            feedback->current_load = static_cast<uint32_t>(passenger_count_);
+            feedback->direction = static_cast<uint32_t>(current_direction_);
+            stop.goal_handle->publish_feedback(feedback);
+        }
+    }
+    for (const auto& stop : down_stops_) 
+    {
+        if (stop.goal_handle && !stop.is_pickup) 
+        {
+            auto feedback = std::make_shared<Elevator::Feedback>();
+            feedback->current_floor = static_cast<uint32_t>(current_floor_);
+            feedback->status = static_cast<uint32_t>(status_);
+            feedback->current_load = static_cast<uint32_t>(passenger_count_);
+            feedback->direction = static_cast<uint32_t>(current_direction_);
+            stop.goal_handle->publish_feedback(feedback);
+        }
+    }
+
+    RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: %s | Passengers: %d",
+                current_floor_,
+                current_direction_ == Direction::DIRECTION_UP ? "Moving UP" : "Moving DOWN",
+                passenger_count_);
 
 }
 
 // 判断当前楼层是否需要停靠
 bool ElevatorActionServer::need_stop(int floor)
 {
-    // 获取目标信息
-    auto goal = goal_handle->get_goal();
-    auto feedback = std::make_shared<Elevator::Feedback>();
-    auto result = std::make_shared<Elevator::Result>();
-
     auto& current_stops = (current_direction_ == Direction::DIRECTION_UP) ? up_stops_ : down_stops_;
 
     for (const auto& stop : current_stops)
@@ -431,7 +450,7 @@ void ElevatorActionServer::handle_stop(int floor)
                 Direction dropoff_direction = (target_floor > floor) ? Direction::DIRECTION_UP : Direction::DIRECTION_DOWN;
                 auto& dropoff_stops = (dropoff_direction == Direction::DIRECTION_UP) ? up_stops_ : down_stops_;
                 // 注意, 此stopinfo对应的是dropoff, 所以是如下调用方式
-                dropoff_stops.push_back(StopInfo(target_floor, false, -1, initial_floor, it->goal_handle));
+                dropoff_stops.push_back(StopInfo(target_floor, false, -1, floor, it->goal_handle));
 
                 // 排序
                 if (dropoff_direction == Direction::DIRECTION_UP)
@@ -456,7 +475,7 @@ void ElevatorActionServer::handle_stop(int floor)
                 feedback->current_floor = static_cast<uint32_t>(current_floor_);
                 feedback->status = static_cast<uint32_t>(ElevatorStatus::STATUS_PICKUP);
                 feedback->current_load = static_cast<uint32_t>(passenger_count_);
-                goal_handle->publish_feedback(feedback);
+                it->goal_handle->publish_feedback(feedback);
                 RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
                             current_floor_,
                             passenger_count_,
@@ -489,13 +508,11 @@ void ElevatorActionServer::handle_stop(int floor)
                 result->message = "Task completed successfully";
                 it->goal_handle->succeed(result);
 
-
-
                 RCLCPP_INFO(this->get_logger(), "[Result] Request Done!");
                 RCLCPP_INFO(this->get_logger(), "Success: Successfully dropped off at floor %d (pickup from %d)",
                     current_floor_,
                     it->initial_floor);
-                RCLCPP_INFO(this->get_logger(), "Target floor: %d", target_floor);
+                RCLCPP_INFO(this->get_logger(), "Target floor: %d", floor);
 
             }
             it = current_stops.erase(it);

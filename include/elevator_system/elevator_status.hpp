@@ -27,9 +27,9 @@ struct StopInfo {
     int initial_floor;      // 如果是drop off，乘客的起始楼层（用于发送result）
     std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> goal_handle;
     
-    StopInfo(int f, bool pickup, int target, 
+    StopInfo(int f, bool pickup, int target, int initial,
              std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> gh = nullptr)
-        : floor(f), is_pickup(pickup), target_floor(target), goal_handle(gh) {}
+        : floor(f), is_pickup(pickup), target_floor(target), initial_floor(initial), goal_handle(gh) {}
 };
 
 // 请求信息
