@@ -91,13 +91,6 @@ rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
     const rclcpp_action::GoalUUID &uuid,
     std::shared_ptr<const Elevator::Goal> goal)
 {
-    current_direction_ = Direction::DIRECTION_UP;
-    status_ = ElevatorStatus::STATUS_IDLE;
-    running_ = true;
-
-    // 启动调度线程
-    std::thread schedule_thread(&ElevatorActionServer::schedule_loop, this);
-    schedule_thread.detach();
 
     RCLCPP_INFO(this->get_logger(), "Passenger at Floor %d, pressing %s", 
                 goal->initial_floor, goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP) ? "🔼 UP" : "🔽 DOWN");
@@ -212,9 +205,10 @@ void ElevatorActionServer::schedule_loop()
 }
 
 // 构造函数实现
-ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v2")
+ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v3")
 {
     RCLCPP_INFO(this->get_logger(), "电梯 Action 服务器 V3 已启动");
+
     // 从参数服务器获取参数
     ground_floor_ = this->declare_parameter<int>("ground_floor", 1);
     top_floor_ = this->declare_parameter<int>("top_floor", 10);
@@ -224,6 +218,9 @@ ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v2")
     current_floor_ = ground_floor_;  // 电梯初始在1楼
     passenger_count_ = 0;  // 初始没有乘客
     status_ = ElevatorStatus::STATUS_IDLE;  // 空闲状态
+
+    // 初始化 look 算法相关成员
+
     // 创建Action服务器
     this->action_server_ = rclcpp_action::create_server<Elevator>(
         this,                    // 当前节点
@@ -234,7 +231,7 @@ ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v2")
     RCLCPP_INFO(this->get_logger(), "电梯Action服务器已启动");
 }
 
-// execute函数实现
+/* // execute函数实现
 void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
 {
     RCLCPP_INFO(this->get_logger(), "Executing goal...");
@@ -398,7 +395,7 @@ void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goa
                 duration.count()); 
 
     
-}
+} */
 
 int main(int argc, char **argv)
 {
