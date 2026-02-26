@@ -75,6 +75,7 @@ private:
 
     // LOOK算法所需要的核心调度函数
     void schedule_loop();
+    void run_elevator();
     void add_request_to_queue(const Request& request);
     void process_new_requests();
     void add_to_stop__plan(const Request& req);
@@ -220,6 +221,8 @@ ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v3")
     status_ = ElevatorStatus::STATUS_IDLE;  // 空闲状态
 
     // 初始化 look 算法相关成员
+    current_direction_ = Direction::DIRECTION_IDLE;     // 当前电梯运动方向初始为空闲
+    running_ = true;                                    // 调度线程运行标志
 
     // 创建Action服务器
     this->action_server_ = rclcpp_action::create_server<Elevator>(
@@ -228,6 +231,11 @@ ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v3")
         std::bind(&ElevatorActionServer::handle_goal, this, std::placeholders::_1, std::placeholders::_2),
         std::bind(&ElevatorActionServer::handle_cancel, this, std::placeholders::_1),
         std::bind(&ElevatorActionServer::handle_accepted, this, std::placeholders::_1));
+
+    // 只启动一次的调度线程!!!
+    std::thread schedule_thread(&ElevatorActionServer::schedule_loop, this);
+    schedule_thread.detach();
+
     RCLCPP_INFO(this->get_logger(), "电梯Action服务器已启动");
 }
 
