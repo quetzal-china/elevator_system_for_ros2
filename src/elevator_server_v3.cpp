@@ -89,34 +89,28 @@ private:
 
 // 实现handle_goal函数 - 验证并接受请求
 // ElevatorActionServer类的handle_goal函数，返回一个GoalResponse类型的结果
+// 注意: v3版本在接受请求时不会收到目标楼层!
 rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
     const rclcpp_action::GoalUUID &uuid,
     std::shared_ptr<const Elevator::Goal> goal)
 {
-
     RCLCPP_INFO(this->get_logger(), "Passenger at Floor %d, pressing %s", 
-                goal->initial_floor, goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP) ? "🔼 UP" : "🔽 DOWN");
-
-    // 保证方向合理
-    bool is_direction_valid = (goal->target_floor > goal->initial_floor) == (goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP));
-
+                goal->initial_floor, 
+                goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP) ? "🔼 UP" : "🔽 DOWN");
     // 验证楼层是否合法 (1-10)
     if (goal->initial_floor < ground_floor_ || 
-        goal->initial_floor > top_floor_ ||
-        goal->target_floor < ground_floor_ || 
-        goal->target_floor > top_floor_ || 
-        !is_direction_valid
-    ) {
-        RCLCPP_WARN(this->get_logger(), "Invalid request!");
-        return rclcpp_action::GoalResponse::REJECT;  // 拒绝
+        goal->initial_floor > top_floor_)
+    {
+        RCLCPP_WARN(this->get_logger(), "Invalid floor!");
+        return rclcpp_action::GoalResponse::REJECT;
     }
-
-    // 验证起始楼层和目标楼层不同
-    if (goal->initial_floor == goal->target_floor) {
-        RCLCPP_WARN(this->get_logger(), "Invalid request!");
-        return rclcpp_action::GoalResponse::REJECT;  // 拒绝
+    // 验证方向是否合法
+    if (goal->direction_to_go != static_cast<uint32_t>(Direction::DIRECTION_UP) &&
+        goal->direction_to_go != static_cast<uint32_t>(Direction::DIRECTION_DOWN))
+    {
+        RCLCPP_WARN(this->get_logger(), "Invalid direction!");
+        return rclcpp_action::GoalResponse::REJECT;
     }
-
     // 特殊情况：在顶层按UP或在底层按DOWN
     if ((goal->initial_floor == top_floor_ && goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP)) ||
         (goal->initial_floor == ground_floor_ && goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_DOWN)))
@@ -124,10 +118,7 @@ rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
         RCLCPP_WARN(this->get_logger(), "Invalid request: cannot go that direction from this floor!");
         return rclcpp_action::GoalResponse::REJECT;
     }
-
     RCLCPP_INFO(this->get_logger(), "Goal accepted by server...");
-
-    // 验证通过，接受请求
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
