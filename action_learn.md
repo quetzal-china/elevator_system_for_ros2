@@ -313,7 +313,558 @@ private:
 
 ---
 
-## 5. C++ std::future 异步操作
+## 5. C++ 多线程同步机制（mutex、lock、condition_variable）
+
+### 5.1 为什么需要线程同步？
+
+在多线程程序中，多个线程可能同时访问同一资源，导致**数据竞争**问题：
+
+```cpp
+// 错误示例：没有同步机制
+int shared_data = 0;
+
+void increment() {
+    for (int i = 0; i < 10000; i++) {
+        shared_data++;  // 多个线程同时修改，结果不可预测
+    }
+}
+
+int main() {
+    std::thread t1(increment);
+    std::thread t2(increment);
+    t1.join();
+    t2.join();
+    std::cout << shared_data << std::endl;  // 期望20000，实际可能小于20000
+}
+```
+
+**问题原因**：`shared_data++` 不是原子操作，包含三个步骤：
+1. 读取 `shared_data` 的值
+2. 将值加1
+3. 将新值写回 `shared_data`
+
+多线程同时执行这三个步骤会导致数据丢失。
+
+### 5.2 std::mutex - 互斥锁
+
+#### 5.2.1 基本概念
+
+`std::mutex`（互斥锁）是一种同步机制，用于保护共享资源：
+- 同一时刻只允许一个线程访问临界区
+- 线程访问前必须先锁定（lock）
+- 线程访问后必须解锁（unlock）
+
+**比喻**：
+```
+mutex 就像卫生间门锁
+- 进入卫生间前必须先锁门（lock）
+- 使用完毕后必须开门（unlock）
+- 其他人想用必须等门打开
+```
+
+#### 5.2.2 基本用法
+
+```cpp
+#include <mutex>
+
+std::mutex mtx;  // 创建互斥锁
+int shared_data = 0;
+
+void safe_increment() {
+    mtx.lock();           // 加锁
+    shared_data++;        // 安全访问共享资源
+    mtx.unlock();         // 解锁
+}
+```
+
+**问题**：如果忘记 `unlock()`，会导致**死锁**！
+
+#### 5.2.3 死锁问题
+
+```cpp
+// 危险示例：可能死锁
+void unsafe_function() {
+    mtx.lock();
+    if (some_condition) {
+        return;  // 忘记 unlock！其他线程永远无法获取锁
+    }
+    mtx.unlock();
+}
+```
+
+**解决方案**：使用 RAII 风格的锁管理器（`std::lock_guard` 或 `std::unique_lock`）。
+
+### 5.3 std::lock_guard - 自动管理锁
+
+#### 5.3.1 基本概念
+
+`std::lock_guard` 是一个 RAII 风格的锁管理器：
+- 构造时自动加锁
+- 析构时自动解锁（即使发生异常）
+- 不需要手动调用 `lock()` 和 `unlock()`
+
+**比喻**：
+```
+lock_guard 就像自动门锁
+- 进入房间自动锁门（构造函数加锁）
+- 离开房间自动开门（析构函数解锁）
+- 即使紧急撤离（异常）也能自动开门
+```
+
+#### 5.3.2 基本用法
+
+```cpp
+#include <mutex>
+
+std::mutex mtx;
+int shared_data = 0;
+
+void safe_function() {
+    std::lock_guard<std::mutex> lock(mtx);  // 构造时自动加锁
+    shared_data++;
+    // 函数结束，lock 析构，自动解锁
+}
+```
+
+#### 5.3.3 在电梯系统中的应用
+
+```cpp
+// 电梯系统中保护请求队列
+class ElevatorActionServer {
+private:
+    std::queue<Request> request_queue_;
+    std::mutex queue_mutex_;
+
+public:
+    // 添加请求（生产者）
+    void add_request(const Request& req) {
+        std::lock_guard<std::mutex> lock(queue_mutex_);  // 自动加锁
+        request_queue_.push(req);
+        // 自动解锁
+    }
+    
+    // 取出请求（消费者）
+    Request get_request() {
+        std::lock_guard<std::mutex> lock(queue_mutex_);  // 自动加锁
+        if (request_queue_.empty()) {
+            return Request();  // 返回空请求
+        }
+        Request req = request_queue_.front();
+        request_queue_.pop();
+        return req;
+        // 自动解锁
+    }
+};
+```
+
+### 5.4 std::unique_lock - 灵活的锁管理
+
+#### 5.4.1 基本概念
+
+`std::unique_lock` 比 `std::lock_guard` 更灵活：
+- 可以手动加锁和解锁
+- 支持条件变量（`std::condition_variable`）
+- 支持延迟加锁、尝试加锁
+
+#### 5.4.2 常用操作
+
+```cpp
+#include <mutex>
+
+std::mutex mtx;
+
+void flexible_locking() {
+    // 方式1：立即加锁（和 lock_guard 类似）
+    std::unique_lock<std::mutex> lock1(mtx);
+    // 自动解锁
+    
+    // 方式2：延迟加锁
+    std::unique_lock<std::mutex> lock2(mtx, std::defer_lock);
+    lock2.lock();    // 手动加锁
+    lock2.unlock();  // 手动解锁
+    
+    // 方式3：尝试加锁
+    std::unique_lock<std::mutex> lock3(mtx, std::try_to_lock);
+    if (lock3.owns_lock()) {
+        // 成功获取锁
+    } else {
+        // 获取锁失败
+    }
+}
+```
+
+#### 5.4.3 lock_guard vs unique_lock 对比
+
+| 特性 | lock_guard | unique_lock |
+|------|-----------|-------------|
+| 自动加锁 | ✓ | ✓ |
+| 自动解锁 | ✓ | ✓ |
+| 手动加锁/解锁 | ✗ | ✓ |
+| 配合 condition_variable | ✗ | ✓ |
+| 性能 | 更高 | 稍低 |
+| 适用场景 | 简单临界区 | 复杂同步逻辑 |
+
+**选择建议**：
+- 简单场景：使用 `std::lock_guard`
+- 需要条件变量：使用 `std::unique_lock`
+- 需要手动控制：使用 `std::unique_lock`
+
+### 5.5 std::condition_variable - 条件变量
+
+#### 5.5.1 基本概念
+
+`std::condition_variable` 用于线程间的通知机制：
+- 允许线程等待某个条件成立
+- 另一个线程可以通知等待的线程
+
+**比喻**：
+```
+condition_variable 就像餐厅的叫号系统
+- 顾客（消费者线程）没有号时在休息区等待
+- 店员（生产者线程）叫号后通知顾客
+- 顾客被叫到号后继续取餐
+```
+
+#### 5.5.2 核心方法
+
+| 方法 | 作用 |
+|------|------|
+| `wait(lock)` | 阻塞等待通知 |
+| `wait(lock, predicate)` | 等待条件成立（推荐） |
+| `notify_one()` | 唤醒一个等待线程 |
+| `notify_all()` | 唤醒所有等待线程 |
+
+#### 5.5.3 基本用法
+
+```cpp
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+
+std::mutex mtx;
+std::condition_variable cv;
+std::queue<int> data_queue;
+bool finished = false;
+
+// 生产者线程
+void producer() {
+    for (int i = 0; i < 10; i++) {
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            data_queue.push(i);
+            std::cout << "生产数据: " << i << std::endl;
+        }
+        cv.notify_one();  // 通知消费者
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        finished = true;
+    }
+    cv.notify_one();  // 通知消费者结束
+}
+
+// 消费者线程
+void consumer() {
+    while (true) {
+        std::unique_lock<std::mutex> lock(mtx);
+        
+        // 等待条件：队列不为空 或 生产结束
+        cv.wait(lock, []{ return !data_queue.empty() || finished; });
+        
+        if (data_queue.empty() && finished) {
+            break;  // 退出循环
+        }
+        
+        int data = data_queue.front();
+        data_queue.pop();
+        std::cout << "消费数据: " << data << std::endl;
+    }
+}
+```
+
+#### 5.5.4 wait(lock, predicate) 工作原理
+
+```cpp
+cv.wait(lock, predicate);
+
+// 等价于：
+while (!predicate()) {
+    lock.unlock();     // 解锁，让其他线程访问
+    // 等待通知...
+    // 被唤醒后
+    lock.lock();       // 重新加锁
+}
+```
+
+**为什么用 unique_lock 而不是 lock_guard？**
+- `wait()` 内部需要解锁和重新加锁
+- `lock_guard` 不支持手动解锁
+- `unique_lock` 支持手动控制
+
+### 5.6 生产者-消费者模式完整示例
+
+#### 5.6.1 在电梯系统中的应用
+
+```cpp
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+
+class ElevatorActionServer {
+private:
+    // 共享数据
+    std::queue<Request> request_queue_;
+    std::mutex queue_mutex_;
+    std::condition_variable cv_;
+    bool running_;
+    
+public:
+    // 生产者：接收请求
+    void handle_accepted(const GoalHandle& goal_handle) {
+        // 1. 创建请求
+        Request req;
+        req.initial_floor = goal_handle->get_goal()->initial_floor;
+        req.target_floor = goal_handle->get_goal()->target_floor;
+        req.direction = static_cast<Direction>(goal_handle->get_goal()->direction_to_go);
+        req.goal_handle = goal_handle;
+        
+        // 2. 加锁并添加到队列
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            request_queue_.push(req);
+            std::cout << "新请求加入队列: " << req.initial_floor 
+                      << "楼 -> " << req.target_floor << "楼" << std::endl;
+        }  // 自动解锁
+        
+        // 3. 通知调度线程
+        cv_.notify_one();
+    }
+    
+    // 消费者：处理请求
+    void schedule_loop() {
+        std::cout << "调度线程已启动" << std::endl;
+        
+        while (running_) {
+            Request req;
+            
+            // 1. 等待请求
+            {
+                std::unique_lock<std::mutex> lock(queue_mutex_);
+                
+                // 等待条件：队列不为空 或 停止运行
+                cv_.wait(lock, [this]() {
+                    return !request_queue_.empty() || !running_;
+                });
+                
+                // 检查是否退出
+                if (!running_ && request_queue_.empty()) {
+                    break;
+                }
+                
+                // 取出请求
+                req = request_queue_.front();
+                request_queue_.pop();
+            }  // 自动解锁
+            
+            // 2. 处理请求（不需要锁）
+            std::cout << "处理请求: " << req.initial_floor 
+                      << "楼 -> " << req.target_floor << "楼" << std::endl;
+            process_request(req);
+        }
+        
+        std::cout << "调度线程已退出" << std::endl;
+    }
+    
+    // 停止调度线程
+    void stop() {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            running_ = false;
+        }
+        cv_.notify_all();  // 唤醒所有等待线程
+    }
+    
+private:
+    void process_request(const Request& req) {
+        // 处理电梯请求...
+    }
+};
+```
+
+#### 5.6.2 工作流程图
+
+```
+handle_accepted()                    schedule_loop()
+     |                                      |
+     ↓                                      |
+创建Request对象                             |
+     |                                      |
+     ↓                                      |
+加锁（lock_guard）                          |
+     |                                      |
+添加到队列                                  |
+     |                                      |
+解锁（自动）                                |
+     |                                      |
+notify_one() ────────────────────→    wait(lock, predicate)
+     |                                      |
+     |                                 队列为空，等待中...
+     |                                      |
+     |                                  被唤醒
+     |                                      |
+     |                                 检查条件（队列不为空）
+     |                                      |
+     |                                 取出请求
+     |                                      |
+     |                                 解锁（自动）
+     |                                      |
+     |                                 处理请求
+     |                                      |
+     ↓                                      ↓
+继续接收新请求                           循环等待下一个请求
+```
+
+### 5.7 注意事项和最佳实践
+
+#### 5.7.1 避免死锁
+
+```cpp
+// 错误示例：可能导致死锁
+std::mutex mtx1, mtx2;
+
+void thread1() {
+    std::lock_guard<std::mutex> lock1(mtx1);
+    // ... 做一些操作
+    std::lock_guard<std::mutex> lock2(mtx2);  // 可能死锁！
+}
+
+void thread2() {
+    std::lock_guard<std::mutex> lock2(mtx2);
+    // ... 做一些操作
+    std::lock_guard<std::mutex> lock1(mtx1);  // 可能死锁！
+}
+
+// 正确方式：使用 std::lock 同时锁定多个互斥量
+void safe_thread() {
+    std::unique_lock<std::mutex> lock1(mtx1, std::defer_lock);
+    std::unique_lock<std::mutex> lock2(mtx2, std::defer_lock);
+    std::lock(lock1, lock2);  // 原子性地锁定两个互斥量
+    // 自动解锁
+}
+```
+
+#### 5.7.2 锁的粒度
+
+```cpp
+// 粒度过大（影响性能）
+void process() {
+    std::lock_guard<std::mutex> lock(mtx);
+    // ... 大量计算
+    save_to_database();  // 不需要锁
+    // ... 更多计算
+}
+
+// 粒度合适
+void process() {
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        // 只保护共享资源访问
+        shared_data++;
+    }
+    // 不需要锁的计算
+    save_to_database();
+}
+```
+
+#### 5.7.3 初始化顺序
+
+```cpp
+class ElevatorActionServer {
+private:
+    std::queue<Request> request_queue_;    // 1. 先声明队列
+    std::mutex queue_mutex_;                 // 2. 再声明互斥锁
+    std::condition_variable cv_;             // 3. 最后声明条件变量
+    bool running_;                            // 4. 控制标志
+    
+public:
+    ElevatorActionServer() 
+        : running_(true)  // 初始化 running_ 为 true
+    {
+        // 启动调度线程
+        std::thread t(&ElevatorActionServer::schedule_loop, this);
+        t.detach();
+    }
+};
+```
+
+### 5.8 常见问题
+
+#### Q1: 为什么 wait 需要放在循环中？
+
+```cpp
+// 错误：直接用 if
+if (!condition) {
+    cv.wait(lock);
+}
+// 问题：虚假唤醒，条件可能仍不成立
+
+// 正确：用 while 或 wait(lock, predicate)
+while (!condition) {
+    cv.wait(lock);
+}
+// 或者
+cv.wait(lock, []{ return condition; });
+```
+
+#### Q2: notify_one 还是 notify_all？
+
+| 场景 | 选择 |
+|------|------|
+| 单个消费者 | `notify_one()` |
+| 多个消费者，只唤醒一个 | `notify_one()` |
+| 所有消费者都需要被唤醒 | `notify_all()` |
+| 不确定 | `notify_all()`（更安全） |
+
+#### Q3: 什么时候用 lock_guard，什么时候用 unique_lock？
+
+```cpp
+// 简单场景：使用 lock_guard
+void simple_function() {
+    std::lock_guard<std::mutex> lock(mtx);
+    shared_data++;
+}
+
+// 复杂场景：使用 unique_lock
+void complex_function() {
+    std::unique_lock<std::mutex> lock(mtx);
+    
+    // 访问共享资源
+    shared_data++;
+    
+    // 释放锁，做其他事情
+    lock.unlock();
+    do_something_else();
+    
+    // 重新加锁
+    lock.lock();
+    shared_data++;
+}
+```
+
+### 5.9 多线程同步机制对比
+
+| 机制 | 适用场景 | 特点 |
+|------|----------|------|
+| `std::mutex` | 保护临界区 | 最基础的锁 |
+| `std::lock_guard` | 简单临界区 | 自动加锁解锁，推荐使用 |
+| `std::unique_lock` | 复杂同步逻辑 | 手动控制，支持条件变量 |
+| `std::condition_variable` | 线程间通信 | 等待/通知机制 |
+
+---
+
+## 6. C++ std::future 异步操作
 
 ### 5.1 什么是 std::future
 
