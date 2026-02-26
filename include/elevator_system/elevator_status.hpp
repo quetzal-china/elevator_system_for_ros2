@@ -24,6 +24,7 @@ struct StopInfo {
     int floor;           // 停靠楼层
     bool is_pickup;      // true=pick up, false=drop off
     int target_floor;    // 如果是pick up,乘客的目标楼层;如果是drop off,此字段无用
+    int initial_floor;      // 如果是drop off，乘客的起始楼层（用于发送result）
     std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> goal_handle;
     
     StopInfo(int f, bool pickup, int target, 
