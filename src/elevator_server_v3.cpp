@@ -512,6 +512,9 @@ void ElevatorActionServer::handle_stop(int floor)
 {
     auto& current_stops = (current_direction_ == Direction::DIRECTION_UP) ? up_stops_ : down_stops_;
 
+    // 存储需要添加的 drop off 任务，避免在遍历中修改容器导致迭代器失效
+    std::vector<std::pair<StopInfo, Direction>> new_dropoffs;
+
     // 遍历当前楼层的所有停靠任务
     for (auto it = current_stops.begin(); it != current_stops.end(); )
     {
@@ -537,23 +540,11 @@ void ElevatorActionServer::handle_stop(int floor)
                 }
                 RCLCPP_INFO(this->get_logger(), "乘客目标楼层: %d 楼", target_floor);
 
-                // 添加 drop off 任务到对应方向
+                // 计算 drop off 方向
                 Direction dropoff_direction = (target_floor > floor) ? Direction::DIRECTION_UP : Direction::DIRECTION_DOWN;
-                auto& dropoff_stops = (target_floor > current_floor_) ? up_stops_ : down_stops_;
-                // 注意, 此stopinfo对应的是dropoff, 所以是如下调用方式      
-                dropoff_stops.push_back(StopInfo(target_floor, false, -1, floor, dropoff_direction, it->goal_handle));
-
-                // 排序
-                if (dropoff_direction == Direction::DIRECTION_UP)
-                {
-                    std::sort(dropoff_stops.begin(), dropoff_stops.end(), 
-                            [](const StopInfo& a, const StopInfo& b) { return a.floor < b.floor; });
-                }
-                else
-                {
-                    std::sort(dropoff_stops.begin(), dropoff_stops.end(), 
-                            [](const StopInfo& a, const StopInfo& b) { return a.floor > b.floor; });
-                }
+                
+                // 先存储 drop off 任务，遍历结束后再添加
+                new_dropoffs.push_back({StopInfo(target_floor, false, -1, floor, dropoff_direction, it->goal_handle), dropoff_direction});
 
                 auto feedback = std::make_shared<Elevator::Feedback>();
                 feedback->current_floor = current_floor_;
@@ -621,6 +612,21 @@ void ElevatorActionServer::handle_stop(int floor)
         }
         
     }
+
+    // 遍历结束后，再添加 drop off 任务
+    for (const auto& dropoff_pair : new_dropoffs)
+    {
+        const StopInfo& dropoff = dropoff_pair.first;
+        Direction dropoff_direction = dropoff_pair.second;
+        auto& dropoff_stops = (dropoff_direction == Direction::DIRECTION_UP) ? up_stops_ : down_stops_;
+        dropoff_stops.push_back(dropoff);
+    }
+
+    // 统一排序
+    std::sort(up_stops_.begin(), up_stops_.end(), 
+        [](const StopInfo& a, const StopInfo& b) { return a.floor < b.floor; });
+    std::sort(down_stops_.begin(), down_stops_.end(), 
+        [](const StopInfo& a, const StopInfo& b) { return a.floor > b.floor; });
 }
 
 /* // execute函数实现

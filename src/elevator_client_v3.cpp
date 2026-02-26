@@ -19,7 +19,7 @@ public:
     {
         action_client_ = rclcpp_action::create_client<Elevator>(this, "elevator");
 
-        interval_dist_ = std::uniform_int_distribution<int>(2, 20);  // 2-20秒
+        interval_dist_ = std::uniform_int_distribution<int>(1, 5);  // 1-5秒
         
         // 初始化随机数引擎
         rng_.seed(std::random_device()());
