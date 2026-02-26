@@ -60,10 +60,10 @@ private:
 
     // LOOK算法相关成员变量
     // 请求队列与同步
-    std::queue<Request> request_queue_;
-    std::mutex queue_mutex_;
-    std::condition_variable cv_;
-    bool running_;
+    std::queue<Request> request_queue_;         // 存放待处理的电梯请求队列
+    std::mutex queue_mutex_;                    // 互斥锁，防止多个线程同时访问队列导致数据竞争
+    std::condition_variable cv_;                // 条件变量，让消费者线程在队列为空时休眠等待，有新请求时唤醒
+    bool running_;                              // 控制调度循环是否继续运行，用于优雅退出
 
     // 停靠算法
     std::vector<StopInfo> up_stops_;  // 上行停靠队列
@@ -138,32 +138,78 @@ rclcpp_action::CancelResponse ElevatorActionServer::handle_cancel(
     return rclcpp_action::CancelResponse::ACCEPT;
 }
 
-// 使用包装函数(因为本人觉得包装函数的方法比lambda表达式和std::bind()函数更清晰)
+/* // 使用包装函数(因为本人觉得包装函数的方法比lambda表达式和std::bind()函数更清晰)
 void execute_wrapper(
     ElevatorActionServer* instance, 
     std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> handle)
     {
         instance->execute(handle);
-    }
+    } */
 
+
+// ==================== 生产者：接收请求 ====================
 // 实现handle_accepted函数
-// NOTICE! V3版本的此处逻辑发生变化, 不再直接启动execute线程, 而是把请求加入队列, 这是LOOK算法核心
+// NOTICE! V3版本的此处逻辑发生变化 不再直接启动execute线程, 而是把请求加入队列, 这是LOOK算法核心
 void ElevatorActionServer::handle_accepted(
-    const std::shared_ptr<GoalHandleElevator> goal_handle
-)
+    const std::shared_ptr<GoalHandleElevator> goal_handle)
 {
+    // 1. 创建Request对象
     Request req;
-    req.initial_floor = static_cast<int>(goal->initial_floor);
-    req.target_floor = static_cast<int>(goal->target_floor);
-    req.direction = static_cast<Direction>(goal->direction_to_go);
+    req.initial_floor = goal_handle->get_goal()->initial_floor;
+    req.target_floor = goal_handle->get_goal()->target_floor;
+    req.direction = static_cast<Direction>(goal_handle->get_goal()->direction_to_go);
     req.goal_handle = goal_handle;
+    
+    // 2. 加锁，添加到队列
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         request_queue_.push(req);
-    }
-    cv_.notify_one();  // 通知调度线程有新请求
+        RCLCPP_INFO(this->get_logger(), "新请求已加入队列: %d楼 -> %d楼", 
+                    req.initial_floor, req.target_floor);
+    }  // 自动解锁
+    
+    // 3. 通知调度线程有新请求
+    cv_.notify_one();
 }
 
+// ==================== 消费者：调度循环 ====================
+void ElevatorActionServer::schedule_loop()
+{
+    RCLCPP_INFO(this->get_logger(), "调度线程已启动");
+    
+    while (running_) {
+        // 1. 等待请求
+        Request req;
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            
+            // 等待条件：队列不为空 或 停止运行
+            cv_.wait(lock, [this]() {   // wait会自动解锁，唤醒后自动加锁
+                return !request_queue_.empty() || !running_;
+            });
+            
+            // 如果要退出，直接返回
+            if (!running_ && request_queue_.empty()) {
+                break;
+            }
+            
+            // 取出请求
+            req = request_queue_.front();
+            request_queue_.pop();
+        }  // 解锁
+        
+        RCLCPP_INFO(this->get_logger(), "开始处理请求: %d楼 -> %d楼", 
+                    req.initial_floor, req.target_floor);
+        
+        // 2. 将请求添加到停靠计划（LOOK算法核心）
+        add_to_stop_plan(req);
+        
+        // 3. 执行电梯调度（移动、停靠等）
+        run_elevator();
+    }
+    
+    RCLCPP_INFO(this->get_logger(), "调度线程已退出");
+}
 
 // 构造函数实现
 ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v2")
