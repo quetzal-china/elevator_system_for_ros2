@@ -95,8 +95,8 @@ rclcpp_action::GoalResponse ElevatorActionServer::handle_goal(
     std::shared_ptr<const Elevator::Goal> goal)
 {
     RCLCPP_INFO(this->get_logger(), "Passenger at Floor %d, pressing %s", 
-                goal->initial_floor, 
-                goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP) ? "🔼 UP" : "🔽 DOWN");
+        goal->initial_floor,
+        goal->direction_to_go == static_cast<uint32_t>(Direction::DIRECTION_UP) ? "🔼 UP" : "🔽 DOWN");
     // 验证楼层是否合法 (1-10)
     if (goal->initial_floor < ground_floor_ || 
         goal->initial_floor > top_floor_)
