@@ -24,16 +24,17 @@ struct StopInfo {
     int floor;           // 停靠楼层
     bool is_pickup;      // true=pick up, false=drop off
     int target_floor;    // 如果是pick up,乘客的目标楼层;如果是drop off,此字段无用
+    std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> goal_handle;
     
-    // 构造函数
-    StopInfo(int f, bool pickup, int target = -1) 
-        : floor(f), is_pickup(pickup), target_floor(target) {}
+    StopInfo(int f, bool pickup, int target, 
+             std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> gh = nullptr)
+        : floor(f), is_pickup(pickup), target_floor(target), goal_handle(gh) {}
 };
 
 // 请求信息
 struct Request {
     int initial_floor;
-    int target_floor;
+    // int target_floor;  target_floor 目标楼层延迟生成
     Direction direction;
     std::shared_ptr<rclcpp_action::ServerGoalHandle<elevator_system::action::Elevator>> goal_handle;
 };

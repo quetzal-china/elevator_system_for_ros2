@@ -78,7 +78,7 @@ private:
     void run_elevator();
     void add_request_to_queue(const Request& request);
     void process_new_requests();
-    void add_to_stop__plan(const Request& req);
+    void add_to_stop_plan(const Request& req);
     void move_one_floor();
     bool need_stop(int floor);
     void handle_stop(int floor);
@@ -172,34 +172,55 @@ void ElevatorActionServer::schedule_loop()
     RCLCPP_INFO(this->get_logger(), "调度线程已启动");
     
     while (running_) {
-        // 1. 等待请求
-        Request req;
+        // 1. 处理队列中所有新请求(非阻塞)
+        process_new_requests();
+        
+        // 2. 如果有任务, 执行一步
+        if (has_pending_stops()) 
         {
-            std::unique_lock<std::mutex> lock(queue_mutex_);
-            
-            // 等待条件：队列不为空 或 停止运行
-            cv_.wait(lock, [this]() {   // wait会自动解锁，唤醒后自动加锁
-                return !request_queue_.empty() || !running_;
-            });
-            
-            // 如果要退出，直接返回
-            if (!running_ && request_queue_.empty()) {
-                break;
+            // 确定方向
+            if (current_direction_ == Direction::DIRECTION_IDLE) {
+                current_direction_ = get_initial_direction();
             }
             
-            // 取出请求
-            req = request_queue_.front();
-            request_queue_.pop();
-        }  // 解锁
-        
-        RCLCPP_INFO(this->get_logger(), "开始处理请求: %d楼 -> %d楼", 
-                    req.initial_floor, req.target_floor);
-        
-        // 2. 将请求添加到停靠计划（LOOK算法核心）
-        add_to_stop_plan(req);
-        
-        // 3. 执行电梯调度（移动、停靠等）
-        run_elevator();
+            // 移动一层
+            move_one_floor();
+            // 检查是否需要停靠
+            if (need_stop(current_floor_))
+            {
+                handle_stop(current_floor_);
+            }
+            // LOOK 算法: 判断是否需要改变方向
+            auto& current_stops = (current_direction_ == Direction::DIRECTION_UP) ? up_stops_ : down_stops_;
+            if (current_stops.empty())
+            {   
+                // 当前方向无任务，检查反向
+                auto& opposite_stops = (current_direction_ == Direction::DIRECTION_UP) ? down_stops_ : up_stops_;
+                if (!opposite_stops.empty())
+                {
+                    // 有反向任务，改变方向
+                    current_direction_ = (current_direction_ == Direction::DIRECTION_UP) ? 
+                                            Direction::DIRECTION_DOWN : Direction::DIRECTION_UP;
+                    RCLCPP_INFO(this->get_logger(), "方向切换: %s", 
+                                current_direction_ == Direction::DIRECTION_UP ? "🔼 UP" : "🔽 DOWN");
+                }
+                else
+                {
+                    // 正向反向都没有请求了, 空闲
+                    current_direction_ = Direction::DIRECTION_IDLE;
+                    status_ = ElevatorStatus::STATUS_IDLE;
+                    RCLCPP_INFO(this->get_logger(), "电梯空闲，等待新请求...");
+                }
+            }
+            
+            // 控制电梯移动速度
+            std::this_thread::sleep_for(std::chrono::milliseconds(move_delay_ms_));
+        }
+        else
+        {
+            // 无任务时, 短暂休眠0.1s, 释放CPU
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
     
     RCLCPP_INFO(this->get_logger(), "调度线程已退出");
@@ -238,6 +259,29 @@ ElevatorActionServer::ElevatorActionServer() : Node("elevator_action_server_v3")
 
     RCLCPP_INFO(this->get_logger(), "电梯Action服务器已启动");
 }
+
+// 处理队列中所有新请求
+void ElevatorActionServer::process_new_requests()
+{
+    // 上锁
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+
+    while (!request_queue_.empty())
+    {
+        Request req = request_queue_.front();
+        request_queue_.pop();
+
+        RCLCPP_INFO(this->get_logger(), "处理新请求: %d楼, 方向: %s", 
+                    req.initial_floor,
+                    req.direction == Direction::DIRECTION_UP ? "🔼 UP" : "🔽 DOWN");
+
+        add_to_stop_plan(req);
+    }
+
+
+}   // 结束自动解锁 RALL
+
+
 
 /* // execute函数实现
 void ElevatorActionServer::execute(const std::shared_ptr<GoalHandleElevator> goal_handle)
