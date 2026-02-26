@@ -281,6 +281,45 @@ void ElevatorActionServer::process_new_requests()
 
 }   // 结束自动解锁 RALL
 
+// 将请求添加到停靠计划
+void ElevatorActionServer::add_to_stop_plan(const Request& req)
+{
+    // 新对象, pick up
+    StopInfo stop(req.initial_floor, true, req.target_floor, req.goal_handle);
+
+    // 添加到对应方向的停靠队列
+    if (req.direction == Direction::DIRECTION_UP)
+    {
+        up_stops_.push_back(stop);
+
+        // 按楼层升序排序(向上是从小到大)
+        std::sort(up_stops_.begin(), up_stops_.end(), 
+                  [](const StopInfo& a, const StopInfo& b) { return a.floor < b.floor; });
+        RCLCPP_INFO(this->get_logger(), "添加上行停靠: %d楼", req.initial_floor);
+
+    }
+    else if (req.direction == Direction::DIRECTION_DOWN)
+    {
+        down_stops_.push_back(stop);
+
+        // 按楼层降序排序(向下是从大到小)
+        std::sort(down_stops_.begin(), down_stops_.end(), 
+                  [](const StopInfo& a, const StopInfo& b) { return a.floor > b.floor; });
+        RCLCPP_INFO(this->get_logger(), "添加下行停靠: %d楼", req.initial_floor);
+    }
+    else
+    {
+        RCLCPP_WARN(this->get_logger(), "Invalid direction!");
+    }
+
+}
+
+// 判断是否有待处理的停靠任务
+bool ElevatorActionServer::has_pending_stops()
+{
+    return !up_stops_.empty() || !down_stops_.empty();
+}
+
 
 
 /* // execute函数实现
