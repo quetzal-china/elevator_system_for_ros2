@@ -28,3 +28,17 @@ ros2 run elevator_system elevator_server_v2 --ros-args --params-file config/elev
 source install/setup.bash
 ros2 run elevator_system elevator_client_v2
 ```
+任务点3验证命令:
+bash1:
+```bash
+colcon build --packages-select elevator_system
+source install/setup.bash
+```
+```bash2
+source install/setup.bash
+ros2 run elevator_system elevator_server_v3 --ros-args --params-file ~/ros2_ws/src/elevator_system/config/elevator_params.yaml
+```
+```bash3
+source install/setup.bash
+ros2 run elevator_system elevator_client_v3
+```

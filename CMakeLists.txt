@@ -87,27 +87,69 @@ install(TARGETS elevator_client
 
 
 # --- Task 2 (V2) 配置 ---
-
 # 1. 编译服务端 V2
 add_executable(elevator_server_v2 src/elevator_server_v2.cpp)
+target_include_directories(elevator_server_v2 PRIVATE
+  include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 ament_target_dependencies(elevator_server_v2
   rclcpp
   rclcpp_action
-  elevator_system
 )
-
+target_link_libraries(elevator_server_v2
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+)
 # 2. 编译客户端 V2
 add_executable(elevator_client_v2 src/elevator_client_v2.cpp)
+target_include_directories(elevator_client_v2 PRIVATE
+  include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 ament_target_dependencies(elevator_client_v2
   rclcpp
   rclcpp_action
-  elevator_system
 )
-
+target_link_libraries(elevator_client_v2
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+)
 # 3. 安装 V2 可执行文件
 install(TARGETS
   elevator_server_v2
   elevator_client_v2
+  DESTINATION lib/${PROJECT_NAME}
+)
+# --- Task 3 (V3) 配置 - LOOK算法版本 ---
+# 1. 编译服务端 V3
+add_executable(elevator_server_v3 src/elevator_server_v3.cpp)
+target_include_directories(elevator_server_v3 PRIVATE
+  include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+ament_target_dependencies(elevator_server_v3
+  rclcpp
+  rclcpp_action
+)
+target_link_libraries(elevator_server_v3
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+)
+# 2. 编译客户端 V3
+add_executable(elevator_client_v3 src/elevator_client_v3.cpp)
+target_include_directories(elevator_client_v3 PRIVATE
+  include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+ament_target_dependencies(elevator_client_v3
+  rclcpp
+  rclcpp_action
+)
+target_link_libraries(elevator_client_v3
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+)
+# 3. 安装 V3 可执行文件
+install(TARGETS
+  elevator_server_v3
+  elevator_client_v3
   DESTINATION lib/${PROJECT_NAME}
 )
 

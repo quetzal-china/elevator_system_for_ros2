@@ -11,6 +11,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstdlib> 
+#include <memory>
 
 /* #define GROUND_FLOOR 1
 #define TOP_FLOOR 10
@@ -284,6 +285,40 @@ void ElevatorActionServer::process_new_requests()
 // 将请求添加到停靠计划
 void ElevatorActionServer::add_to_stop_plan(const Request& req)
 {
+    // 创建 pick up 停靠信息
+    StopInfo stop(req.initial_floor, true, -1, -1, req.direction, req.goal_handle);
+    
+    // 关键改变：根据电梯当前位置与乘客位置的关系决定加入哪个队列
+    // 而不是根据乘客想去的方向！
+    
+    if (req.initial_floor > current_floor_) {
+        // 乘客在电梯上方，电梯需要往上走才能接到
+        up_stops_.push_back(stop);
+        std::sort(up_stops_.begin(), up_stops_.end(), 
+            [](const StopInfo& a, const StopInfo& b) { return a.floor < b.floor; });
+        RCLCPP_INFO(this->get_logger(), "添加上行停靠(接客): %d楼", req.initial_floor);
+    } else if (req.initial_floor < current_floor_) {
+        // 乘客在电梯下方，电梯需要往下走才能接到
+        down_stops_.push_back(stop);
+        std::sort(down_stops_.begin(), down_stops_.end(), 
+            [](const StopInfo& a, const StopInfo& b) { return a.floor > b.floor; });
+        RCLCPP_INFO(this->get_logger(), "添加下行停靠(接客): %d楼", req.initial_floor);
+    } else {
+        // 乘客就在当前楼层，根据乘客想去的方向决定
+        if (req.direction == Direction::DIRECTION_UP) {
+            up_stops_.push_back(stop);
+            std::sort(up_stops_.begin(), up_stops_.end(), 
+                [](const StopInfo& a, const StopInfo& b) { return a.floor < b.floor; });
+        } else {
+            down_stops_.push_back(stop);
+            std::sort(down_stops_.begin(), down_stops_.end(), 
+                [](const StopInfo& a, const StopInfo& b) { return a.floor > b.floor; });
+        }
+        RCLCPP_INFO(this->get_logger(), "电梯当前楼层接客: %d楼", req.initial_floor);
+    }
+}
+/* void ElevatorActionServer::add_to_stop_plan(const Request& req)
+{
     // 新对象, pick up
     // target_floor 暂时未知，initial_floor 暂时无用
     StopInfo stop(req.initial_floor, true, -1, -1, req.goal_handle);
@@ -313,7 +348,7 @@ void ElevatorActionServer::add_to_stop_plan(const Request& req)
         RCLCPP_WARN(this->get_logger(), "Invalid direction!");
     }
 
-}
+} */
 
 // 判断是否有待处理的停靠任务
 bool ElevatorActionServer::has_pending_stops()
@@ -324,26 +359,90 @@ bool ElevatorActionServer::has_pending_stops()
 // 获取初始运行方向
 Direction ElevatorActionServer::get_initial_direction()
 {
-    if (!up_stops_.empty() && down_stops_.empty())
-    {
-        // 只有上行任务
-        return Direction::DIRECTION_UP;
+    if (up_stops_.empty() && down_stops_.empty())
+        return Direction::DIRECTION_IDLE;
+    
+    int nearest_up = -1;   // 上行队列中最近的楼层
+    int nearest_down = -1;  // 下行队列中最近的楼层
+    
+    // 找 up_stops_ 中距离电梯最近的楼层
+    if (!up_stops_.empty()) {
+        // up_stops_ 按升序排序，需要找到第一个 >= current_floor_ 的元素
+        // 或最后一个 < current_floor_ 的元素
+        for (const auto& stop : up_stops_) {
+            if (stop.floor >= current_floor_) {
+                nearest_up = stop.floor;
+                break;
+            }
+        }
+        // 如果所有楼层都在电梯下方，取最后一个（最大的）
+        if (nearest_up == -1 && !up_stops_.empty()) {
+            nearest_up = up_stops_.back().floor;
+        }
     }
-    else if (up_stops_.empty() && !down_stops_.empty())
-    {
-        // 只有下行任务
-        return Direction::DIRECTION_DOWN;
+    
+    // 找 down_stops_ 中距离电梯最近的楼层
+    if (!down_stops_.empty()) {
+        // down_stops_ 按降序排序
+        for (const auto& stop : down_stops_) {
+            if (stop.floor <= current_floor_) {
+                nearest_down = stop.floor;
+                break;
+            }
+        }
+        // 如果所有楼层都在电梯上方，取最后一个（最小的）
+        if (nearest_down == -1 && !down_stops_.empty()) {
+            nearest_down = down_stops_.back().floor;
+        }
     }
-    else if (!up_stops_.empty() && !down_stops_.empty())
-    {
-        // 两个方向都有任务, 选择距离当前楼层最近的停靠楼层
-        int up_distance = std::abs(up_stops_.front().floor - current_floor_);
-        int down_distance = std::abs(down_stops_.front().floor - current_floor_);
-        // 选择更近的方向
-        return (up_distance <= down_distance) ? Direction::DIRECTION_UP : Direction::DIRECTION_DOWN;
+    
+    // 比较哪个更近
+    if (nearest_up == -1 && nearest_down == -1) {
+        return Direction::DIRECTION_IDLE;
+    } else if (nearest_up == -1) {
+        return (nearest_down > current_floor_) ? Direction::DIRECTION_UP : Direction::DIRECTION_DOWN;
+    } else if (nearest_down == -1) {
+        return (nearest_up > current_floor_) ? Direction::DIRECTION_UP : Direction::DIRECTION_DOWN;
+    } else {
+        return (std::abs(nearest_up - current_floor_) <= std::abs(nearest_down - current_floor_)) 
+               ? Direction::DIRECTION_UP : Direction::DIRECTION_DOWN;
     }
-    return Direction::DIRECTION_IDLE;
 }
+/* Direction ElevatorActionServer::get_initial_direction()
+{
+    // 判断电梯需要去哪个方向接第一个乘客
+    
+    if (up_stops_.empty() && down_stops_.empty())
+        return Direction::DIRECTION_IDLE;
+    
+    // 找到最近的停靠点（无论是UP还是DOWN）
+    int nearest_floor = -1;
+    Direction nearest_direction = Direction::DIRECTION_IDLE;
+    
+    if (!up_stops_.empty()) 
+    {
+        nearest_floor = up_stops_.front().floor;
+        nearest_direction = Direction::DIRECTION_UP;
+    }
+    
+    if (!down_stops_.empty()) 
+    {
+        if (nearest_floor == -1 || 
+            std::abs(down_stops_.front().floor - current_floor_) < std::abs(nearest_floor - current_floor_)) 
+            {
+            nearest_floor = down_stops_.front().floor;
+            nearest_direction = Direction::DIRECTION_DOWN;
+        }
+    }
+    
+    // 根据最近停靠点相对于当前电梯的位置决定方向
+    if (nearest_floor > current_floor_)
+        return Direction::DIRECTION_UP;
+    else if (nearest_floor < current_floor_)
+        return Direction::DIRECTION_DOWN;
+    else
+        return nearest_direction;  // 就在同一楼层
+} */
 
 // 移动一层
 void ElevatorActionServer::move_one_floor()
@@ -425,23 +524,24 @@ void ElevatorActionServer::handle_stop(int floor)
 
                 // 随机生成目标楼层               
                 int target_floor;
-                if (current_direction_ == Direction::DIRECTION_UP) 
+                // 使用乘客想去的方向，而不是电梯方向！
+                if (it->direction == Direction::DIRECTION_UP) 
                 {
-                    // 向上，目标楼层 > 当前楼层
+                    // 乘客想往上，目标楼层 > 当前楼层
                     target_floor = floor + (rand() % (top_floor_ - floor)) + 1;
                 } 
                 else 
                 {
-                    // 向下，目标楼层 < 当前楼层
+                    // 乘客想往下，目标楼层 < 当前楼层
                     target_floor = ground_floor_ + (rand() % (floor - ground_floor_));
                 }
                 RCLCPP_INFO(this->get_logger(), "乘客目标楼层: %d 楼", target_floor);
 
                 // 添加 drop off 任务到对应方向
                 Direction dropoff_direction = (target_floor > floor) ? Direction::DIRECTION_UP : Direction::DIRECTION_DOWN;
-                auto& dropoff_stops = (dropoff_direction == Direction::DIRECTION_UP) ? up_stops_ : down_stops_;
-                // 注意, 此stopinfo对应的是dropoff, 所以是如下调用方式
-                dropoff_stops.push_back(StopInfo(target_floor, false, -1, floor, it->goal_handle));
+                auto& dropoff_stops = (target_floor > current_floor_) ? up_stops_ : down_stops_;
+                // 注意, 此stopinfo对应的是dropoff, 所以是如下调用方式      
+                dropoff_stops.push_back(StopInfo(target_floor, false, -1, floor, dropoff_direction, it->goal_handle));
 
                 // 排序
                 if (dropoff_direction == Direction::DIRECTION_UP)
@@ -491,6 +591,13 @@ void ElevatorActionServer::handle_stop(int floor)
                 feedback->current_load = passenger_count_;
                 feedback->direction = static_cast<uint32_t>(current_direction_);
                 it->goal_handle->publish_feedback(feedback);
+                RCLCPP_INFO(this->get_logger(), "[Feedback] Floor:%d | Status: Arrived | Passengers: %d | Dir: %s",
+                            current_floor_,
+                            passenger_count_,
+                            (current_direction_ == Direction::DIRECTION_UP) ? "UP" : "DOWN");
+
+                // 开门时间
+                std::this_thread::sleep_for(std::chrono::seconds(1));
 
                 // 发送 result（任务完成）
                 auto result = std::make_shared<Elevator::Result>();
