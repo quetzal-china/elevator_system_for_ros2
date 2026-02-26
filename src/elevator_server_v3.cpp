@@ -73,17 +73,17 @@ private:
     //电梯内乘客
     std::vector<Request> onboard_passengers_;
 
-    // LOOK算法所需要的核心调度函数
-    void schedule_loop();
+    // LOOK算法所需要的核心调度函数, 打 * 号完成了
+    void schedule_loop();// *
     void run_elevator();
     void add_request_to_queue(const Request& request);
-    void process_new_requests();
-    void add_to_stop_plan(const Request& req);
+    void process_new_requests();// *
+    void add_to_stop_plan(const Request& req);// *
     void move_one_floor();
     bool need_stop(int floor);
     void handle_stop(int floor);
-    bool has_pending_stops();
-    Direction get_initial_direction();
+    bool has_pending_stops();// *
+    Direction get_initial_direction();// *
 };
 
 // 实现handle_goal函数 - 验证并接受请求
@@ -318,6 +318,30 @@ void ElevatorActionServer::add_to_stop_plan(const Request& req)
 bool ElevatorActionServer::has_pending_stops()
 {
     return !up_stops_.empty() || !down_stops_.empty();
+}
+
+// 获取初始运行方向
+Direction ElevatorActionServer::get_initial_direction()
+{
+    if (!up_stops_.empty() && down_stops_.empty(()))
+    {
+        // 只有上行任务
+        return Direction::DIRECTION_UP;
+    }
+    else if (up_stops_.empty() && !down_stops_.empty(()))
+    {
+        // 只有下行任务
+        return Direction::DIRECTION_DOWN;
+    }
+    else if (!up_stops.empty() && !down_stops_.empty())
+    {
+        // 两个方向都有任务, 选择距离当前楼层最近的停靠楼层
+        int up_distance = std::abs(up_stops_.front().floor - current_floor_);
+        int down_distance = std::abs(down_stops_.front().floor - current_floor_);
+        // 选择更近的方向
+        return (up_distance <= down_distance) ? Direction::DIRECTION_UP : Direction::DIRECTION_DOWN;
+    }
+    return Direction::DIRECTION_IDLE;
 }
 
 
