@@ -368,3 +368,4 @@ elevator_action_server:
 
 **项目完成时间**：2025年
 **开发环境**：Ubuntu 20.04 + ROS2 Foxy
+*补充*：该任务全开发流程记录存储在https://github.com/quetzal-china/elevator_system_for_ros2, 可以进行验证.
