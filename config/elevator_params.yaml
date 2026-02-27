@@ -1,6 +1,6 @@
 elevator_server:
   ros__parameters:
     ground_floor: 1
-    top_floor: 15
+    top_floor: 10
     move_delay_ms: 500
     enable_simulation: true

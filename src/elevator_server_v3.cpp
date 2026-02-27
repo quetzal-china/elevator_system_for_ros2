@@ -179,6 +179,16 @@ void ElevatorActionServer::schedule_loop()
         // 2. 如果有任务, 执行一步
         if (has_pending_stops()) 
         {
+            // 边界保护
+            if (current_floor_ >= top_floor_ && current_direction_ == Direction::DIRECTION_UP) {
+                current_direction_ = Direction::DIRECTION_DOWN;
+                RCLCPP_WARN(this->get_logger(), "到达顶层，强制切换方向为 DOWN");
+            }
+            if (current_floor_ <= ground_floor_ && current_direction_ == Direction::DIRECTION_DOWN) {
+                current_direction_ = Direction::DIRECTION_UP;
+                RCLCPP_WARN(this->get_logger(), "到达底层，强制切换方向为 UP");
+            }
+
             // 确定方向
             if (current_direction_ == Direction::DIRECTION_IDLE) {
                 current_direction_ = get_initial_direction();
@@ -447,6 +457,20 @@ Direction ElevatorActionServer::get_initial_direction()
 // 移动一层
 void ElevatorActionServer::move_one_floor()
 {
+    // 边界检查：如果到达边界，停止移动
+    if (current_direction_ == Direction::DIRECTION_UP && current_floor_ >= top_floor_) 
+    {
+        RCLCPP_WARN(this->get_logger(), "已到达顶层 %d 楼，停止向上移动", top_floor_);
+        current_direction_ = Direction::DIRECTION_IDLE;
+        return;
+    }
+    if (current_direction_ == Direction::DIRECTION_DOWN && current_floor_ <= ground_floor_) 
+    {
+        RCLCPP_WARN(this->get_logger(), "已到达底层 %d 楼，停止向下移动", ground_floor_);
+        current_direction_ = Direction::DIRECTION_IDLE;
+        return;
+    }
+
     // 更新楼层
     if (current_direction_ == Direction::DIRECTION_UP)
     {
